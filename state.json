@@ -1,0 +1,137 @@
+{
+ "docs": {
+  "https://opencode.ai/v2/docs/console/models/": "91a82c017b949cfd",
+  "https://openrouter.ai/docs/guides/privacy/provider-logging": "4fcd811817928b9c"
+ },
+ "free": {
+  "opencode": [
+   "beam-free",
+   "big-pickle",
+   "cat-jam-free",
+   "deepseek-v4-flash-free",
+   "deepseek-v4.1-flash-free",
+   "exo-free",
+   "fledge-alpha-free",
+   "glm-4.7-free",
+   "glm-5-free",
+   "glm-5.3-flash-free",
+   "grok-code",
+   "hy3-free",
+   "hy3-preview-free",
+   "kimi-k2.5-free",
+   "laguna-s-2.1-free",
+   "ling-2.6-flash-free",
+   "ling-3.0-flash-fin-free",
+   "ling-3.0-flash-free",
+   "ling-3.0-tiny-free",
+   "ling-3.1-flash-free",
+   "ll-alpha-free",
+   "longcat-2.0-free",
+   "longcat-2.5-preview-free",
+   "mimo-v2-flash-free",
+   "mimo-v2-omni-free",
+   "mimo-v2-pro-free",
+   "mimo-v2.5-free",
+   "mimo-v2.6-flash-free",
+   "minimax-m2.1-free",
+   "minimax-m2.5-free",
+   "minimax-m3-free",
+   "muse-spark-1.2-contributor-free",
+   "muse-spark-1.3-contributor-free",
+   "nemotron-3-super-free",
+   "nemotron-3-ultra-free",
+   "nemotron-3.5-lightning-free",
+   "nemotron-3.5-super-vl-free",
+   "north-mini-code-free",
+   "qwen3.6-plus-free",
+   "ring-2.6-1t-free",
+   "space-bunny-free",
+   "step-5-preview-free",
+   "trinity-large-preview-free",
+   "x-preview-f-free"
+  ],
+  "openrouter": [
+   "cohere/north-mini-code:free",
+   "dots-studio/dots-3-note-preview:free",
+   "google/gemma-4-26b-a4b-it:free",
+   "google/gemma-4-31b-it:free",
+   "google/lyria-3-clip-preview",
+   "google/lyria-3-pro-preview",
+   "liquid/lfm-2.5-2.6b:free",
+   "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+   "nvidia/nemotron-3-super-120b-a12b:free",
+   "nvidia/nemotron-3-ultra-550b-a55b:free",
+   "nvidia/nemotron-3.5-content-safety:free",
+   "nvidia/nemotron-3.5-lightning:free",
+   "nvidia/nemotron-3.5-super-vl:free",
+   "openrouter/free",
+   "poolside/laguna-s-2.1:free",
+   "poolside/laguna-xs-2.1:free",
+   "thinkingmachines/inkling-small:free",
+   "thinkingmachines/inkling:free",
+   "xingchen-agi/xing4.0-29b-a4b:free"
+  ]
+ },
+ "generated": "2026-10-19T08:27:24Z",
+ "policy": {
+  "opencode": {
+   "beam-free": {
+    "class": "retained-30d",
+    "text": "Beam Free is free on OpenCode for a limited time. Its provider does not use your data for model training and retains it for 30 days for safety reasons. It\u2019s not available in Angola, Belarus, Cambodia, China (including Hong Kong and Macau), Cuba, the Democratic Republic of the Congo, Equatorial Guinea, Iran, Iraq, Laos, Libya, Nigeria, North Korea, Russia, Syria, Turkmenistan, Uzbekistan, Venezuela, or the Crimea, Donetsk, and Luhansk regions of Ukraine."
+   },
+   "big-pickle": {
+    "class": "trains-or-logs",
+    "text": "Big Pickle is a stealth model that\u2019s free on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
+   },
+   "deepseek-v4-1-flash-free": {
+    "class": "zero-retention",
+    "text": "DeepSeek V4.1 Flash Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
+   },
+   "exo-free": {
+    "class": "trains-or-logs",
+    "text": "Exo Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
+   },
+   "glm-5-3-flash-free": {
+    "class": "zero-retention",
+    "text": "GLM-5.3-Flash Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
+   },
+   "jev-1-13-free": {
+    "class": "unstated",
+    "text": "Jev 1.13 Free is available on OpenCode for a limited time."
+   },
+   "ll-alpha-free": {
+    "class": "trains-or-logs",
+    "text": "LL Alpha Free is a stealth model that\u2019s free on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
+   },
+   "longcat-2-5-preview-free": {
+    "class": "zero-retention",
+    "text": "LongCat 2.5 Preview Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
+   },
+   "mimo-v2-5-free": {
+    "class": "trains-or-logs",
+    "text": "MiMo-V2.5 Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
+   },
+   "mimo-v2-6-flash-free": {
+    "class": "trains-or-logs",
+    "text": "MiMo-V2.6-Flash Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
+   },
+   "nemotron-3-5-lightning-free": {
+    "class": "trains-or-logs",
+    "text": "Nemotron 3.5 Lightning Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
+   },
+   "nemotron-3-5-super-vl-free": {
+    "class": "trains-or-logs",
+    "text": "Nemotron 3.5 Super VL Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
+   },
+   "nemotron-3-ultra-free": {
+    "class": "trains-or-logs",
+    "text": "Nemotron 3 Ultra Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
+   },
+   "space-bunny-free": {
+    "class": "zero-retention",
+    "text": "Space Bunny Free is a stealth model that\u2019s free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
+   }
+  },
+  "openrouter": {}
+ }
+}

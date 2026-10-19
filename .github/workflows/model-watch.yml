@@ -1,0 +1,44 @@
+name: model-watch
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: model-watch
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # watch.py is stdlib-only, so there is nothing to install
+      - name: Check catalogs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          # optional: https://ntfy.sh/<your-topic>, Discord/Slack webhook
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: python watch.py
+
+      - name: Commit new baseline
+        run: |
+          if git diff --quiet state.json; then
+            echo "baseline unchanged"
+            exit 0
+          fi
+          git config user.name "model-watch"
+          git config user.email "model-watch@users.noreply.github.com"
+          git commit -am "chore: update model-watch baseline"
+          git push
