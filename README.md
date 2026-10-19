@@ -56,13 +56,27 @@ state.json          # first baseline, already generated
 
 3. Repo → Settings → Actions → General → Workflow permissions →
    **Read and write permissions**. The workflow commits the new baseline and
-   opens issues; without this it fails.
+   opens issues; without this it fails. On an **empty** new repo the default is
+   read-only and the token lacks `administration`, so set it via the API:
 
-4. Actions tab → `model-watch` → **Run workflow**. First run against the
-   committed `state.json` is silent unless something changed since it was made.
+```
+gh api -X PUT repos/<you>/model-watch/actions/permissions/workflow \
+  -f default_workflow_permissions=write
+```
+
+4. Trigger the first run: push any commit touching `watch.py`, `config.json`, or
+   the workflow file, or use the Actions tab → `model-watch` → **Run workflow**.
+   A schedule-only workflow cannot be dispatched until the file has run once.
 
 Alerts land as comments on one rolling issue titled `[model-watch] changes`.
 GitHub emails you for issue comments on your own repo, so no extra wiring.
+
+## Verified end to end
+
+- Two pushes ran green; the second emitted `NEW FREE opencode/glm-5.3-flash-free`
+  and opened issue #2.
+- Baseline commits touch only `state.json`, and a rerun produces a byte-identical
+  snapshot, so there is no commit churn and no self-triggering loop.
 
 ## Optional: phone push instead of / alongside GitHub issues
 
