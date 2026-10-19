@@ -3,6 +3,13 @@ name: model-watch
 on:
   schedule:
     - cron: "17 */6 * * *"
+  # baseline commits only touch state.json, so these do not re-trigger the job
+  push:
+    branches: [main]
+    paths:
+      - watch.py
+      - config.json
+      - .github/workflows/model-watch.yml
   workflow_dispatch:
 
 permissions:
@@ -41,4 +48,5 @@ jobs:
           git config user.name "model-watch"
           git config user.email "model-watch@users.noreply.github.com"
           git commit -am "chore: update model-watch baseline"
-          git push
+          # scheduled runs check out a detached HEAD
+          git push origin HEAD:${GITHUB_REF_NAME}
