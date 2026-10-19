@@ -1,6 +1,6 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "91a82c017b949cfd",
+  "https://opencode.ai/v2/docs/console/models/": "8ac833b50bc20251",
   "https://openrouter.ai/docs/guides/privacy/provider-logging": "4fcd811817928b9c"
  },
  "free": {
@@ -36,6 +36,7 @@
    "minimax-m2.1-free",
    "minimax-m2.5-free",
    "minimax-m3-free",
+   "minimax-m3.1-flash-free",
    "muse-spark-1.2-contributor-free",
    "muse-spark-1.3-contributor-free",
    "nemotron-3-super-free",
@@ -58,6 +59,7 @@
    "google/lyria-3-clip-preview",
    "google/lyria-3-pro-preview",
    "liquid/lfm-2.5-2.6b:free",
+   "minimax/minimax-m3.1-flash:free",
    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
    "nvidia/nemotron-3-super-120b-a12b:free",
    "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -114,6 +116,10 @@
     "class": "trains-or-logs",
     "text": "MiMo-V2.6-Flash Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
    },
+   "minimax-m3-1-flash-free": {
+    "class": "zero-retention",
+    "text": "MiniMax M3.1 Flash Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
+   },
    "nemotron-3-5-lightning-free": {
     "class": "trains-or-logs",
     "text": "Nemotron 3.5 Lightning Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
@@ -125,10 +131,6 @@
    "nemotron-3-ultra-free": {
     "class": "trains-or-logs",
     "text": "Nemotron 3 Ultra Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
-   },
-   "space-bunny-free": {
-    "class": "zero-retention",
-    "text": "Space Bunny Free is a stealth model that\u2019s free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
    }
   },
   "openrouter": {}
