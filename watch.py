@@ -192,7 +192,6 @@ def collect(config):
         snap["policy"]["opencode"] = {s: {"text": t, "class": classify(t)} for s, t in prose.items()}
 
     snap["docs"][OPENROUTER_PRIVACY_DOCS] = doc_hash(OPENROUTER_PRIVACY_DOCS)
-    snap["generated"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return snap, cat
 
 
@@ -294,12 +293,13 @@ def main():
 
     snap, cat = collect(config)
     events = diff(old, snap, cat, config)
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     if events:
         report = ["%s found %d change(s)" % (ISSUE_PREFIX, len(events)), ""]
         report += ["- " + e for e in events if not e.startswith("    ")]
         report += [e for e in events if e.startswith("    ")]
-        report += ["", "_generated %s_" % snap["generated"]]
+        report += ["", "_generated %s_" % stamp]
         report = "\n".join(report)
         print(report)
         if dry_run:
@@ -316,7 +316,7 @@ def main():
             with open(summary, "a") as fh:
                 fh.write(report + "\n")
     else:
-        print("no changes at %s" % snap["generated"])
+        print("no changes at %s" % stamp)
 
     if not dry_run:
         with open(STATE_FILE, "w") as fh:
