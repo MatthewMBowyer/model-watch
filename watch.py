@@ -311,9 +311,12 @@ def main():
         token, repo = os.environ.get("GITHUB_TOKEN"), os.environ.get("GITHUB_REPOSITORY")
         if token and repo:
             print("issue:", notify_issue(report, token, repo))
-        hook = os.environ.get("ALERT_WEBHOOK_URL")
+        hook = os.environ.get("ALERT_WEBHOOK_URL") or config.get("webhook")
         if hook:
-            print(notify_webhook(report, hook))
+            try:
+                print(notify_webhook(report, hook))
+            except Exception as exc:
+                print("webhook failed: %s" % exc)
         summary = os.environ.get("GITHUB_STEP_SUMMARY")
         if summary:
             with open(summary, "a") as fh:
