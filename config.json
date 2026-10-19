@@ -1,5 +1,6 @@
 {
   "providers": ["opencode", "openrouter"],
+  "mention": "MatthewMBowyer",
   "watch": [
     "opencode/glm-5.3-flash-free",
     "opencode/deepseek-v4.1-flash-free",

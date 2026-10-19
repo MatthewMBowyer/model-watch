@@ -297,6 +297,9 @@ def main():
 
     if events:
         report = ["%s found %d change(s)" % (ISSUE_PREFIX, len(events)), ""]
+        if config.get("mention"):
+            # a direct @mention notifies even when the repo is not "Watching"
+            report += ["cc @%s" % config["mention"], ""]
         report += ["- " + e for e in events if not e.startswith("    ")]
         report += [e for e in events if e.startswith("    ")]
         report += ["", "_generated %s_" % stamp]
