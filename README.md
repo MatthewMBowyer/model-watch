@@ -78,16 +78,25 @@ GitHub emails you for issue comments on your own repo, so no extra wiring.
 - Baseline commits touch only `state.json`, and a rerun produces a byte-identical
   snapshot, so there is no commit churn and no self-triggering loop.
 
-## Optional: phone push instead of / alongside GitHub issues
+## Where the ping actually comes from
 
-`ntfy.sh` needs no account:
+GitHub suppresses notifications for events created with the workflow's own
+`GITHUB_TOKEN` when you triggered that run, so issues opened by the job can be
+silently ignored — no email, no notification. That is why the default channel
+here is **ntfy**, not GitHub issues.
 
-1. Install the ntfy app, subscribe to a topic you invent, e.g. `mymodelwatch-9f3a`.
-2. Repo → Settings → Secrets and variables → Actions → New secret
-   `ALERT_WEBHOOK_URL` = `https://ntfy.sh/mymodelwatch-9f3a`.
+`config.json` carries a `webhook` key:
 
-Any other webhook works too — Discord/Slack JSON (`content`/`text`) is sent
-automatically when the URL is not an ntfy one.
+```json
+"webhook": "https://ntfy.sh/modelwatch-mbowyer-2191230209"
+```
+
+Anyone who knows that topic name can read the alerts, so either keep the repo
+private or move the URL to the `ALERT_WEBHOOK_URL` secret (secrets win over
+config). Subscribe to the topic in the ntfy app or at
+`https://ntfy.sh/modelwatch-mbowyer-2191230209` and alerts arrive on your phone.
+
+GitHub issues are still written as a second channel and as the audit trail.
 
 ## Run locally
 
