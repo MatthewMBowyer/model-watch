@@ -1,7 +1,7 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "74fa6dc09ef4c9a6",
-  "https://openrouter.ai/docs/guides/privacy/provider-logging": "da14e60589dc9af2"
+  "https://opencode.ai/v2/docs/console/models/": "0618bcc41bba0453",
+  "https://openrouter.ai/docs/guides/privacy/provider-logging": "5702e50408762354"
  },
  "free": {
   "opencode": [
@@ -12,6 +12,7 @@
    "deepseek-v4.1-flash-free",
    "exo-free",
    "fledge-alpha-free",
+   "flint-40b-free",
    "glm-4.7-free",
    "glm-5-free",
    "glm-5.3-flash-free",
@@ -69,6 +70,7 @@
    "openrouter/free",
    "poolside/laguna-s-2.1:free",
    "poolside/laguna-xs-2.1:free",
+   "recursive/flint-v1.0:free",
    "thinkingmachines/inkling-small:free",
    "thinkingmachines/inkling:free",
    "xingchen-agi/xing4.0-29b-a4b:free"
@@ -76,6 +78,10 @@
  },
  "policy": {
   "opencode": {
+   "": {
+    "class": "unstated",
+    "text": "."
+   },
    "beam-free": {
     "class": "retained-30d",
     "text": "Beam Free is free on OpenCode for a limited time. Its provider does not use your data for model training and retains it for 30 days for safety reasons. It\u2019s not available in Angola, Belarus, Cambodia, China (including Hong Kong and Macau), Cuba, the Democratic Republic of the Congo, Equatorial Guinea, Iran, Iraq, Laos, Libya, Nigeria, North Korea, Russia, Syria, Turkmenistan, Uzbekistan, Venezuela, or the Crimea, Donetsk, and Luhansk regions of Ukraine."
@@ -92,6 +98,14 @@
     "class": "trains-or-logs",
     "text": "Exo Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
    },
+   "flint-40b-free": {
+    "class": "trains-or-logs",
+    "text": "Flint 40B Free is free on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
+   },
+   "free-models": {
+    "class": "unstated",
+    "text": "free models"
+   },
    "glm-5-3-flash-free": {
     "class": "zero-retention",
     "text": "GLM-5.3-Flash Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
@@ -99,10 +113,6 @@
    "jev-1-13-free": {
     "class": "unstated",
     "text": "Jev 1.13 Free is available on OpenCode for a limited time."
-   },
-   "ll-alpha-free": {
-    "class": "trains-or-logs",
-    "text": "LL Alpha Free is a stealth model that\u2019s free on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
    },
    "longcat-2-5-preview-free": {
     "class": "zero-retention",
@@ -131,6 +141,18 @@
    "nemotron-3-ultra-free": {
     "class": "trains-or-logs",
     "text": "Nemotron 3 Ultra Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
+   },
+   "opencode-disable-free-models-1": {
+    "class": "unstated",
+    "text": "OPENCODE_DISABLE_FREE_MODELS=1"
+   },
+   "see": {
+    "class": "unstated",
+    "text": ". See"
+   },
+   "to-hide-free-models-in-opencode-set": {
+    "class": "unstated",
+    "text": "To hide free models in OpenCode, set"
    }
   },
   "openrouter": {}
