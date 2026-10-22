@@ -1,6 +1,6 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "0618bcc41bba0453",
+  "https://opencode.ai/v2/docs/console/models/": "b3efa873a56d6d8e",
   "https://openrouter.ai/docs/guides/privacy/provider-logging": "5702e50408762354"
  },
  "free": {
@@ -60,7 +60,6 @@
    "google/lyria-3-clip-preview",
    "google/lyria-3-pro-preview",
    "liquid/lfm-2.5-2.6b:free",
-   "minimax/minimax-m3.1-flash:free",
    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
    "nvidia/nemotron-3-super-120b-a12b:free",
    "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -125,10 +124,6 @@
    "mimo-v2-6-flash-free": {
     "class": "trains-or-logs",
     "text": "MiMo-V2.6-Flash Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
-   },
-   "minimax-m3-1-flash-free": {
-    "class": "zero-retention",
-    "text": "MiniMax M3.1 Flash Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
    },
    "nemotron-3-5-lightning-free": {
     "class": "trains-or-logs",
