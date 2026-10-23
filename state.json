@@ -1,7 +1,7 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "b3efa873a56d6d8e",
-  "https://openrouter.ai/docs/guides/privacy/provider-logging": "5702e50408762354"
+  "https://opencode.ai/v2/docs/console/models/": "41a59c67c0ba6e72",
+  "https://openrouter.ai/docs/guides/privacy/provider-logging": "f2f706cda65aadd5"
  },
  "free": {
   "opencode": [
@@ -93,10 +93,6 @@
     "class": "zero-retention",
     "text": "DeepSeek V4.1 Flash Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
    },
-   "exo-free": {
-    "class": "trains-or-logs",
-    "text": "Exo Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
-   },
    "flint-40b-free": {
     "class": "trains-or-logs",
     "text": "Flint 40B Free is free on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
@@ -116,10 +112,6 @@
    "longcat-2-5-preview-free": {
     "class": "zero-retention",
     "text": "LongCat 2.5 Preview Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
-   },
-   "mimo-v2-5-free": {
-    "class": "trains-or-logs",
-    "text": "MiMo-V2.5 Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
    },
    "mimo-v2-6-flash-free": {
     "class": "trains-or-logs",
