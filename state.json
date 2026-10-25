@@ -1,6 +1,6 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "41a59c67c0ba6e72",
+  "https://opencode.ai/v2/docs/console/models/": "b2a92783f007487b",
   "https://openrouter.ai/docs/guides/privacy/provider-logging": "f2f706cda65aadd5"
  },
  "free": {
@@ -108,10 +108,6 @@
    "jev-1-13-free": {
     "class": "unstated",
     "text": "Jev 1.13 Free is available on OpenCode for a limited time."
-   },
-   "longcat-2-5-preview-free": {
-    "class": "zero-retention",
-    "text": "LongCat 2.5 Preview Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
    },
    "mimo-v2-6-flash-free": {
     "class": "trains-or-logs",
