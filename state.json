@@ -1,6 +1,6 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "b2a92783f007487b",
+  "https://opencode.ai/v2/docs/console/models/": "8154a032e0930957",
   "https://openrouter.ai/docs/guides/privacy/provider-logging": "c9dba1dd2e6efd2e"
  },
  "free": {
@@ -61,7 +61,6 @@
    "google/lyria-3-pro-preview",
    "liquid/lfm-2.5-2.6b:free",
    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-   "nvidia/nemotron-3-super-120b-a12b:free",
    "nvidia/nemotron-3-ultra-550b-a55b:free",
    "nvidia/nemotron-3.5-content-safety:free",
    "nvidia/nemotron-3.5-lightning:free",
