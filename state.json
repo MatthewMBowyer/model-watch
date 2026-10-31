@@ -66,8 +66,6 @@
    "nvidia/nemotron-3.5-lightning:free",
    "nvidia/nemotron-3.5-super-vl:free",
    "openrouter/free",
-   "poolside/laguna-s-2.1:free",
-   "poolside/laguna-xs-2.1:free",
    "recursive/flint-v1.0:free",
    "thinkingmachines/inkling-small:free",
    "thinkingmachines/inkling:free",
