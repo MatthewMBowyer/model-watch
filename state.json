@@ -1,13 +1,14 @@
 {
  "docs": {
   "https://opencode.ai/v2/docs/console/models/": "e0b999085459b89c",
-  "https://openrouter.ai/docs/guides/privacy/provider-logging": "fcabaac64eed89fa"
+  "https://openrouter.ai/docs/guides/privacy/provider-logging": "fb1763f336799bab"
  },
  "free": {
   "opencode": [
    "beam-free",
    "big-pickle",
    "cat-jam-free",
+   "crouton-alpha-free",
    "deepseek-v4-flash-free",
    "deepseek-v4.1-flash-free",
    "exo-free",
@@ -68,6 +69,7 @@
    "nvidia/nemotron-3.5-super-vl:free",
    "openrouter/free",
    "recursive/flint-v1.0:free",
+   "stealth/crouton-alpha",
    "thinkingmachines/inkling-small:free",
    "thinkingmachines/inkling:free",
    "xingchen-agi/xing4.0-29b-a4b:free"
