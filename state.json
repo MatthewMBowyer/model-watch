@@ -1,7 +1,7 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "9cd662dae3c637d6",
-  "https://openrouter.ai/docs/guides/privacy/provider-logging": "c9dba1dd2e6efd2e"
+  "https://opencode.ai/v2/docs/console/models/": "e0b999085459b89c",
+  "https://openrouter.ai/docs/guides/privacy/provider-logging": "fcabaac64eed89fa"
  },
  "free": {
   "opencode": [
@@ -45,6 +45,7 @@
    "nemotron-3.5-lightning-free",
    "nemotron-3.5-super-vl-free",
    "north-mini-code-free",
+   "pulse-alpha-free",
    "qwen3.6-plus-free",
    "ring-2.6-1t-free",
    "space-bunny-free",
@@ -125,6 +126,10 @@
    "opencode-disable-free-models-1": {
     "class": "unstated",
     "text": "OPENCODE_DISABLE_FREE_MODELS=1"
+   },
+   "pulse-alpha-free": {
+    "class": "trains-or-logs",
+    "text": "Pulse Alpha Free is a stealth model that\u2019s free on OpenCode for a limited time. The team is using this time to collect feedback and improve the model. It\u2019s not available in the European Union, Iceland, Liechtenstein, Norway, Cuba, Iran, North Korea, Russia, Ukraine, or Venezuela."
    },
    "see": {
     "class": "unstated",
