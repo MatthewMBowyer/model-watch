@@ -1,6 +1,6 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "e0b999085459b89c",
+  "https://opencode.ai/v2/docs/console/models/": "7ac46e21672274eb",
   "https://openrouter.ai/docs/guides/privacy/provider-logging": "fb1763f336799bab"
  },
  "free": {
@@ -70,8 +70,6 @@
    "openrouter/free",
    "recursive/flint-v1.0:free",
    "stealth/crouton-alpha",
-   "thinkingmachines/inkling-small:free",
-   "thinkingmachines/inkling:free",
    "xingchen-agi/xing4.0-29b-a4b:free"
   ]
  },
@@ -88,6 +86,10 @@
    "big-pickle": {
     "class": "trains-or-logs",
     "text": "Big Pickle is a stealth model that\u2019s free on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
+   },
+   "crouton-alpha-free": {
+    "class": "trains-or-logs",
+    "text": "Crouton Alpha Free is a stealth model that\u2019s free on OpenCode for a limited time. The team is using this time to collect feedback and improve the model. It\u2019s not available in the European Union, Afghanistan, Belarus, China (including Hong Kong and Macau), Cambodia, Cuba, Eritrea, Ethiopia, Haiti, Iran, Iraq, Libya, Myanmar, Nicaragua, North Korea, Pakistan, Russia, Somalia, Syria, Venezuela, or Western Sahara, or in some regions within otherwise supported countries."
    },
    "deepseek-v4-1-flash-free": {
     "class": "zero-retention",
