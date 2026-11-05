@@ -246,6 +246,15 @@ _NAME_CAPITAL = re.compile(r"(?<=[a-z])[A-Z]")
 # name-shape rule, which accepts no plain lower-case word.
 _MODEL_CATEGORY = frozenset({"model", "models"})
 
+# A number at a head's BOUNDARY is how a page numbers its headings ("Section 3",
+# "Table 2", "Changelog 2025", "3.1 Retention terms"), and that is structural: a
+# name carries its number in the MIDDLE ("Nemotron 3 Ultra Free", "Flint 40B
+# Free") or as a version at the BACK ("Jev 1.13"), never as a bare counter at
+# either end. So no list of the words a page numbers with is needed, and a stale
+# baseline holding "section-3" can no longer resurrect that heading.
+_BARE_INTEGER = re.compile(r"^\d+$")
+_DOTTED_NUMBER = re.compile(r"^\d+(?:\.\d+)+$")
+
 
 def _strip_name(token):
     """A head token reduced to the word it contributes to a name."""
@@ -412,6 +421,18 @@ def looks_like_model_name(phrase, labelled=False, known=None, subject=False,
     # provider's name.
     if slug(tokens[0]) in _PROVIDER_IDENTITIES:
         return bool(known_identity(phrase, observed))
+    # (3) A number at either END of the head is the page's own numbering, not a
+    # name: "Section 3", "Table 2", "Changelog 2025", "3.1 Retention terms". A
+    # name carries its number in the MIDDLE ("Nemotron 3 Ultra Free", "Flint 40B
+    # Free") or as a version at the BACK ("Jev 1.13"), never as a counter at a
+    # boundary - measured against all 132 identities the live catalogue yields,
+    # none is shaped that way. Structural, so no list of the words a page numbers
+    # its headings with, and overturnable only by a catalogue identity: a
+    # baseline that recorded "section-3" must not keep that heading alive.
+    last = tokens[-1].strip(".,;:'\u2019s").lower()
+    if _BARE_INTEGER.match(tokens[0].lower()) or _BARE_INTEGER.match(last) \
+            or _DOTTED_NUMBER.match(tokens[0].lower()):
+        return bool(known_identity(phrase, observed))
     # Both remaining routes, one rule: a known identity, or an internal capital.
     # Applied identically to a colon label and to a name followed by its own
     # clause, so a heading shape cannot survive on the route the last fix did
@@ -420,35 +441,20 @@ def looks_like_model_name(phrase, labelled=False, known=None, subject=False,
         return True
     if any(_NAME_CAPITAL.search(t) for t in tokens):
         return True
-    # The head ran on into the sentence's real subject ("Retention Policy
-    # Prompts are retained ..."), so the subject is the reader's data and the
-    # line states a posture, not a model. Unreachable after the last-token veto
-    # above for every shape measured, and kept so a later relaxation of that
-    # veto cannot silently reintroduce the defect.
-    if any(t.lower().strip("'\u2019s") in _DATA_SUBJECTS for t in tokens):
-        return False
-    # Neither of those accepted the phrase. A plain-worded head can still be a
-    # real name the run has not seen yet ("North Mini Code Free"), so it is kept
-    # only when it is SHAPED like a proper name AND the line makes it the
-    # subject of its own clause. A colon label cannot use this route: a heading
-    # and an entry share the colon shape, so the label form must be corroborated
-    # by identity or an internal capital.
-    if labelled or len(tokens) == 1:
-        return False
-    # A determiner opens a noun phrase about the page's whole catalogue - "All
-    # models", "Some models", "Each model", "All free models on this page" -
-    # never a name, and the head reader already skips them for that reason.
-    # Without this the subject test alone admitted every one of them, and each
-    # fired a retention alert naming a model the source never states
-    # (AC-13/AC-25).
-    if tokens[0].lower() in _DETERMINERS:
-        return False
-    # Every word of a proper name is a name word. Prose is not: "free", "models",
-    # "on this page" are ordinary lower-case words, and any one of them means the
-    # head ran on into the sentence instead of naming something.
-    if not all(_name_token(t) for t in tokens):
-        return False
-    return bool(subject)
+    # NOTHING ELSE QUALIFIES. There is no shape-only accept route, and in
+    # particular no subject-position route: subject position is not identity,
+    # it is exactly where a page talks about its whole catalogue ("All models
+    # are free ...") or opens a section ("Section 3 retains ..."). Rounds 9-14
+    # closed the shapes such a route admitted one at a time; this removes the
+    # route (MW-EXTRACTOR-SUBJECT-ROUTE-ADMITS-COLLECTIVE-PROSE, AC-13/AC-25).
+    #
+    # `labelled` and `subject` stay in the signature because the caller still
+    # establishes them and `head_stands_as_subject()` still documents the
+    # distinction, but neither may accept a phrase on its own. Nothing real is
+    # lost: the run's identity data (catalogue, free list, previous snapshot)
+    # corroborates every entry in the live "Free models" block, and an internal
+    # capital admits a name the catalogue has not caught up with yet.
+    return False
 
 
 def _name_token(token):

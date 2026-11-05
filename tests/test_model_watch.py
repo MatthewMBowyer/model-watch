@@ -72,6 +72,11 @@ MODELS_DEV_JSON = json.dumps({
                            "release_date": "2026-09-01"},
         "beam-free": {"name": "Beam Free", "cost": {"input": 0, "output": 0},
                       "release_date": "2026-08-01"},
+        "flint-40b-free": {"name": "Flint 40B Free", "cost": {"input": 0, "output": 0},
+                           "release_date": "2026-09-15"},
+        "north-mini-code-free": {"name": "North Mini Code Free",
+                                  "cost": {"input": 0, "output": 0},
+                                  "release_date": "2026-09-20"},
     }},
     "openrouter": {"models": {
         "cohere/north-mini-code:free": {"name": "North Mini Code", "cost": {"input": 0, "output": 0}},
@@ -116,6 +121,29 @@ def offline(pages=None, models_dev=MODELS_DEV_JSON):
         yield seen
     finally:
         watch.fetch = original
+
+
+# The identities a real run holds for the three models the fixture page states.
+# A head is a model only when this data names it or it carries an internal
+# capital, so every test that asserts on a plain-worded name must hand it in -
+# exactly as collect() does.
+GLM_KNOWN = frozenset({"glm-5-3-flash-free", "beam-free", "flint-40b-free"})
+
+
+def live_prose():
+    """opencode_policy_text() with the identity data collect() really supplies.
+
+    The extractor now requires corroboration: a head is a model only when the
+    run's identity data names it or it carries an internal capital. A bare
+    opencode_policy_text() call, as an earlier version of these tests made it,
+    supplies neither, so it measured an extraction path that never runs. This
+    helper hands the real catalogue in, exactly as collect() does.
+    """
+    models = json.loads(MODELS_DEV_JSON)
+    cat = watch.catalog(models, ["opencode"])
+    return watch.opencode_policy_text(
+        known=watch.policy_identities(cat, {}, ["opencode"]),
+        observed=watch.observed_identities(cat, ["opencode"]))
 
 
 def config(**over):
@@ -1047,7 +1075,12 @@ class JunkKeyTests(unittest.TestCase):
             GLM_PROSE, BEAM_PROSE, TRAINS_PROSE,
             "Jev 1.13 Free is available on OpenCode for a limited time.",
         ]
-        keys = set(watch.extract_policy(lines))
+        # The run's identity data, as collect() supplies it: the catalogue names
+        # every one of these. Without corroboration nothing is a model at all -
+        # that is the rule now - so the fixture must carry the real evidence.
+        keys = set(watch.extract_policy(
+            lines, known={"glm-5-3-flash-free", "beam-free", "flint-40b-free",
+                          "jev-1-13-free"}))
         self.assertEqual(keys, {"glm-5-3-flash-free", "beam-free", "flint-40b-free",
                                 "jev-1-13-free"})
         for junk in self.JUNK:
@@ -1065,8 +1098,17 @@ class JunkKeyTests(unittest.TestCase):
         self.assertEqual(watch.extract_policy(self.FURNITURE), {})
 
     def test_real_looking_entry_is_kept(self):
+        """A plain-worded name is kept, corroborated by the run's own identity.
+
+        It is NOT admitted on shape any more: the shape-only route admitted
+        "All models", "Section 3" and "OpenCode Console" in the same position.
+        The catalogue names this model, which is the evidence a real entry has.
+        """
         line = "North Mini Code Free is free on OpenCode for a limited time."
-        self.assertEqual(set(watch.extract_policy([line])), {"north-mini-code-free"})
+        self.assertEqual(set(watch.extract_policy([line])), set())
+        self.assertEqual(
+            set(watch.extract_policy([line], known={"north-mini-code-free"})),
+            {"north-mini-code-free"})
 
     def test_real_captured_page_extracts_only_models(self):
         with offline() as seen:
@@ -1101,9 +1143,13 @@ class JunkKeyTests(unittest.TestCase):
             "GLM-5.3-Flash Free can be used for free on OpenCode for a limited time.",
             "Foo Free. Its provider retains your data for 30 days.",
         )
+        # "Foo Free" is not a model the run knows, and no longer a name on
+        # shape alone; every real opener here names an identity the catalogue
+        # holds, which is the evidence the rule requires.
+        known = GLM_KNOWN | {"foo-free"}
         for opener in openers:
             with self.subTest(opener=opener):
-                got = watch.extract_policy([opener + tail])
+                got = watch.extract_policy([opener + tail], known=known)
                 self.assertEqual(len(got), 1, opener)
                 self.assertIn("retains your data for 30 days", list(got.values())[0])
 
@@ -1136,7 +1182,8 @@ class JunkKeyTests(unittest.TestCase):
         for opener in openers:
             with self.subTest(opener=opener):
                 got = watch.extract_policy([opener + " Its provider retains your "
-                                            "data for 30 days for safety reasons."])
+                                            "data for 30 days for safety reasons."],
+                                           known={"glm-5-3-flash-free"})
                 self.assertEqual(list(got), ["glm-5-3-flash-free"], opener)
 
     def test_reworded_free_clause_does_not_read_as_removed(self):
@@ -1145,7 +1192,9 @@ class JunkKeyTests(unittest.TestCase):
               " Its provider retains your data for 30 days for safety reasons."
         new = "GLM-5.3-Flash Free. Free to use on OpenCode for a limited time." \
               " Its provider retains your data for 30 days for safety reasons."
-        before, after = watch.extract_policy([old]), watch.extract_policy([new])
+        known = {"glm-5-3-flash-free"}
+        before = watch.extract_policy([old], known=known)
+        after = watch.extract_policy([new], known=known)
         self.assertEqual(set(before), set(after))
         self.assertEqual("retained-30d", watch.classify(list(after.values())[0]))
         events = watch.diff(
@@ -1161,7 +1210,7 @@ class JunkKeyTests(unittest.TestCase):
         """A name on one line and its prose on the next is one entry."""
         got = watch.extract_policy([
             "North Mini Code Free", "is free on OpenCode for a limited time.",
-        ])
+        ], known={"north-mini-code-free"})
         self.assertEqual(set(got), {"north-mini-code-free"})
 
     # MW-EXTRACTOR-ADMITS-SECTION-PROSE. "A model name carries a capital" was
@@ -1211,7 +1260,7 @@ class JunkKeyTests(unittest.TestCase):
                        policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
         for line in self.SECTION_PROSE:
             with self.subTest(line=line):
-                keys = watch.extract_policy([GLM_PROSE, line])
+                keys = watch.extract_policy([GLM_PROSE, line], known=GLM_KNOWN)
                 self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
                 events = watch.diff(
                     before,
@@ -1230,14 +1279,14 @@ class JunkKeyTests(unittest.TestCase):
         have missed, and a version-independent comparison cannot be outgrown.
         """
         with offline():
-            _url, clean = watch.opencode_policy_text()
+            _url, clean = live_prose()
             self.assertTrue(clean)
             for line in self.SECTION_PROSE:
                 with self.subTest(line=line):
                     page = DOC_PAGE.replace(
                         "<li>" + BEAM_PROSE, "<p>%s</p><li>%s" % (line, BEAM_PROSE))
                     with offline({watch.OPENCODE_DOCS[0]: page}):
-                        _url2, prose = watch.opencode_policy_text()
+                        _url2, prose = live_prose()
                     self.assertEqual(sorted(prose), sorted(clean), line)
 
     def test_a_plain_worded_model_name_is_kept_when_the_run_knows_it(self):
@@ -1310,7 +1359,7 @@ class JunkKeyTests(unittest.TestCase):
                        policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
         for line in self.INLINE_HEADINGS:
             with self.subTest(line=line):
-                keys = watch.extract_policy([GLM_PROSE, line])
+                keys = watch.extract_policy([GLM_PROSE, line], known=GLM_KNOWN)
                 self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
                 events = watch.diff(
                     before,
@@ -1323,14 +1372,14 @@ class JunkKeyTests(unittest.TestCase):
     def test_inline_heading_in_the_live_page_adds_no_key(self):
         """The same insertions through the real opencode_policy_text()."""
         with offline():
-            _url, clean = watch.opencode_policy_text()
+            _url, clean = live_prose()
             self.assertTrue(clean)
             for line in self.INLINE_HEADINGS:
                 with self.subTest(line=line):
                     page = DOC_PAGE.replace(
                         "<li>" + BEAM_PROSE, "<li>%s</li><li>%s" % (line, BEAM_PROSE))
                     with offline({watch.OPENCODE_DOCS[0]: page}):
-                        _url2, prose = watch.opencode_policy_text()
+                        _url2, prose = live_prose()
                     self.assertEqual(sorted(prose), sorted(clean), line)
 
     # The remaining accept route after the plain-word rule: a NUMBERED section
@@ -1363,7 +1412,7 @@ class JunkKeyTests(unittest.TestCase):
                        policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
         for line in self.NUMBERED_LABELS:
             with self.subTest(line=line):
-                keys = watch.extract_policy([GLM_PROSE, line])
+                keys = watch.extract_policy([GLM_PROSE, line], known=GLM_KNOWN)
                 self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
                 events = watch.diff(
                     before,
@@ -1414,6 +1463,69 @@ class JunkKeyTests(unittest.TestCase):
         "3.1: requests are retained for 30 days.",
     )
 
+    # Round 16: with the shape-only route gone, a numbered head could still
+    # reach an accept route through the internal capital a digit gives it. A
+    # bare counter at a head BOUNDARY is numbering; a name keeps its number in
+    # the middle or as a trailing version. These are the boundary forms, and
+    # they are the ones the rule closes. A dotted number at the BACK
+    # ("Figure 2.1") and a number in the MIDDLE ("Chapter 7 Privacy") are
+    # indistinguishable in form from "Jev 1.13" and "Nemotron 3 Ultra Free", so
+    # they are NOT claimed here - closing them would need a vocabulary list,
+    # which is the defect this whole class was about. They are reported as a
+    # measured residual in verify_review16.py section 6 instead.
+    NUMBERED_HEADS = (
+        "Section 3 retains your data for 30 days.",
+        "Section 3 is free to use on OpenCode for a limited time.",
+        "Table 2: requests are retained for 30 days.",
+        "Changelog 2025: requests are logged for 30 days.",
+        "3.1 Retention terms: requests are retained for 30 days.",
+    )
+
+    def test_a_number_at_the_head_boundary_is_numbering_not_a_name(self):
+        """MW-EXTRACTOR-SUBJECT-ROUTE-ADMITS-COLLECTIVE-PROSE, last member.
+
+        With the shape-only route gone, a numbered head still reached an accept
+        route through the internal capital a digit gives it. A name carries its
+        number in the MIDDLE ("Nemotron 3 Ultra Free", "Flint 40B Free") or as a
+        version at the BACK ("Jev 1.13"), never as a counter at a boundary, so
+        the form decides and no list of the words a page numbers with is needed.
+        """
+        for line in self.NUMBERED_HEADS:
+            with self.subTest(line=line):
+                self.assertEqual(watch.extract_policy([line]), {}, line)
+                # Harshest case: a previous snapshot holding this exact key.
+                key = watch.slug(watch.policy_head(line))
+                self.assertEqual(watch.extract_policy([line], known={key}), {}, line)
+
+    def test_a_number_in_the_middle_of_a_name_is_still_a_name(self):
+        """The other direction, so the rule cannot degenerate into "no digits"."""
+        for line, key in (
+            ("Nemotron 3 Ultra Free is free on OpenCode for a limited time.",
+             "nemotron-3-ultra-free"),
+            ("Flint 40B Free is free on OpenCode for a limited time.",
+             "flint-40b-free"),
+            ("Jev 1.13: Prompts are retained for 30 days.", "jev-1-13"),
+            ("GLM-5.3-Flash Free: Prompts are retained for 30 days.",
+             "glm-5-3-flash-free"),
+        ):
+            with self.subTest(line=line):
+                known = {key, "jev-1-13-free"}
+                self.assertEqual(
+                    set(watch.extract_policy([line], known=known)), {key})
+
+    def test_no_numbered_heading_in_the_live_block_adds_a_key(self):
+        """The same shapes through the real opencode_policy_text()."""
+        with offline():
+            _url, clean = live_prose()
+        self.assertTrue(clean)
+        for line in self.NUMBERED_HEADS:
+            with self.subTest(line=line):
+                page = DOC_PAGE.replace(
+                    "<li>" + BEAM_PROSE, "<p>%s</p><li>%s" % (line, BEAM_PROSE))
+                with offline({watch.OPENCODE_DOCS[0]: page}):
+                    _url2, prose = live_prose()
+                self.assertEqual(sorted(prose), sorted(clean), line)
+
     def test_a_numbered_or_versioned_heading_never_becomes_a_policy_key(self):
         """A number numbers a heading; it does not make a heading a model."""
         known = {"beam-free", "glm-5-3-flash-free"}
@@ -1432,7 +1544,7 @@ class JunkKeyTests(unittest.TestCase):
                        policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
         for line in self.NUMBERED_VERSION_LABELS:
             with self.subTest(line=line):
-                keys = watch.extract_policy([GLM_PROSE, line])
+                keys = watch.extract_policy([GLM_PROSE, line], known=GLM_KNOWN)
                 self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
                 events = watch.diff(
                     before,
@@ -1445,7 +1557,7 @@ class JunkKeyTests(unittest.TestCase):
     def test_a_numbered_heading_in_the_live_block_adds_no_key(self):
         """The reviewer's reproduction, through the real opencode_policy_text()."""
         with offline():
-            _url, clean = watch.opencode_policy_text()
+            _url, clean = live_prose()
             self.assertTrue(clean)
             self.assertEqual(len(clean), 3)
             for line in self.NUMBERED_VERSION_LABELS:
@@ -1453,7 +1565,7 @@ class JunkKeyTests(unittest.TestCase):
                     page = DOC_PAGE.replace(
                         "<li>" + BEAM_PROSE, "<p>%s</p><li>%s" % (line, BEAM_PROSE))
                     with offline({watch.OPENCODE_DOCS[0]: page}):
-                        _url2, prose = watch.opencode_policy_text()
+                        _url2, prose = live_prose()
                     self.assertEqual(sorted(prose), sorted(clean), line)
 
     def test_a_provider_name_is_never_read_as_one_of_its_own_models(self):
@@ -1480,7 +1592,7 @@ class JunkKeyTests(unittest.TestCase):
         for line in ("OpenCode: Prompts are retained for 30 days.",
                      "OpenRouter: requests are retained for 30 days."):
             with self.subTest(line=line):
-                keys = watch.extract_policy([GLM_PROSE, line])
+                keys = watch.extract_policy([GLM_PROSE, line], known=GLM_KNOWN)
                 self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
                 self.assertEqual(watch.diff(
                     before,
@@ -1491,7 +1603,7 @@ class JunkKeyTests(unittest.TestCase):
     def test_a_provider_heading_in_the_live_block_adds_no_key(self):
         """The same route end-to-end, through the real opencode_policy_text()."""
         with offline():
-            _url, clean = watch.opencode_policy_text()
+            _url, clean = live_prose()
             self.assertEqual(len(clean), 3)
             for line in ("OpenCode: Prompts are retained for 30 days.",
                          "OpenRouter: requests are retained for 30 days."):
@@ -1499,7 +1611,7 @@ class JunkKeyTests(unittest.TestCase):
                     page = DOC_PAGE.replace(
                         "<li>" + BEAM_PROSE, "<p>%s</p><li>%s" % (line, BEAM_PROSE))
                     with offline({watch.OPENCODE_DOCS[0]: page}):
-                        _url2, prose = watch.opencode_policy_text()
+                        _url2, prose = live_prose()
                     self.assertEqual(sorted(prose), sorted(clean), line)
 
     def test_the_provider_refusal_does_not_close_a_real_name(self):
@@ -1556,7 +1668,7 @@ class JunkKeyTests(unittest.TestCase):
         reach the network.
         """
         with offline():
-            _url, prose = watch.opencode_policy_text()
+            _url, prose = live_prose()
         self.assertEqual(sorted(prose), [
             "beam-free", "flint-40b-free", "glm-5-3-flash-free",
         ])
@@ -1604,7 +1716,7 @@ class JunkKeyTests(unittest.TestCase):
                        policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
         for line in self.COLLECTIVE_HEADS:
             with self.subTest(line=line):
-                keys = watch.extract_policy([GLM_PROSE, line])
+                keys = watch.extract_policy([GLM_PROSE, line], known=GLM_KNOWN)
                 self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
                 self.assertEqual(watch.diff(
                     before,
@@ -1615,14 +1727,14 @@ class JunkKeyTests(unittest.TestCase):
     def test_collective_prose_in_the_live_page_adds_no_key(self):
         """The same shapes through the real opencode_policy_text()."""
         with offline():
-            _url, clean = watch.opencode_policy_text()
+            _url, clean = live_prose()
             self.assertTrue(clean)
             for line in self.COLLECTIVE_HEADS:
                 with self.subTest(line=line):
                     page = DOC_PAGE.replace(
                         "<li>" + BEAM_PROSE, "<p>%s</p><li>%s" % (line, BEAM_PROSE))
                     with offline({watch.OPENCODE_DOCS[0]: page}):
-                        _url2, prose = watch.opencode_policy_text()
+                        _url2, prose = live_prose()
                     self.assertEqual(sorted(prose), sorted(clean), line)
 
     # The residual of MW-EXTRACTOR-SUBJECT-ROUTE-ADMITS-COLLECTIVE-PROSE. Round
@@ -1684,26 +1796,83 @@ class JunkKeyTests(unittest.TestCase):
     def test_the_category_veto_passes_the_live_block_through(self):
         """The live page's real entries all survive the stricter rule."""
         with offline():
-            _url, clean = watch.opencode_policy_text()
+            _url, clean = live_prose()
         self.assertEqual(len(clean), 3)
         for line in self.CATEGORY_NOUN_HEADS:
             with self.subTest(line=line):
                 page = DOC_PAGE.replace(
                     "<li>" + BEAM_PROSE, "<p>%s</p><li>%s" % (line, BEAM_PROSE))
                 with offline({watch.OPENCODE_DOCS[0]: page}):
-                    _url2, prose = watch.opencode_policy_text()
+                    _url2, prose = live_prose()
                 self.assertEqual(sorted(prose), sorted(clean), line)
 
+    def test_no_accept_route_survives_the_two_stated_tests(self):
+        """MW-EXTRACTOR-SUBJECT-ROUTE-ADMITS-COLLECTIVE-PROSE: the class, pinned.
+
+        The reviewer measured collective prose and real page headings keying and
+        firing *while* every shape-specific test passed, because one accept
+        route - "multi-token, every word name-shaped, head is the clause
+        subject" - skipped the stated rule entirely. Each earlier round closed
+        the one shape that route had just admitted, so the next shape was
+        admitted by the same route. This test asserts the route is GONE: every
+        member below is admitted by neither route, whatever its shape.
+        """
+        collective = (
+            "All models are free to use on OpenCode for a limited time. "
+            "Data is retained for 30 days.",
+            "Some models are free to use on OpenCode for a limited time.",
+            "Each model is free to use on OpenCode for a limited time.",
+            "Every model is free to use on OpenCode for a limited time.",
+            "Any model is free to use on OpenCode for a limited time.",
+            "Most models are free to use on OpenCode for a limited time.",
+            "Many models are free to use on OpenCode for a limited time.",
+            "All free models on this page are free to use on OpenCode.",
+            "Selected models are free to use on OpenCode for a limited time.",
+            "OpenCode Console: Prompts are retained for 30 days.",
+            "OpenCode Console provides a list of models tested by the team.",
+            "OpenCode Go: Prompts are retained for 30 days.",
+            "OpenCode Go provides a subscription with included usage.",
+            "Section 3 is free to use on OpenCode for a limited time.",
+            "Section 3 retains your data for 30 days.",
+        )
+        for line in collective:
+            with self.subTest(line=line):
+                head = watch.policy_head(line)
+                self.assertFalse(
+                    watch.looks_like_model_name(head, subject=True,
+                                                known=GLM_KNOWN),
+                    "%r keyed as %r - an accept route skipped the stated rule"
+                    % (line, watch.slug(head)))
+                self.assertEqual(watch.extract_policy([line], known=GLM_KNOWN), {})
+
+    def test_the_live_block_survives_without_the_removed_route(self):
+        """No collateral: all twelve live entries are corroborated identities."""
+        with offline():
+            _url, prose = live_prose()
+        self.assertEqual(len(prose), 3)
+        self.assertEqual(sorted(prose),
+                         ["beam-free", "flint-40b-free", "glm-5-3-flash-free"])
+
     def test_a_plain_worded_new_name_is_still_admitted_on_the_subject_route(self):
-        """The other direction: the stricter route still admits a real new name."""
-        for line, key in (
+        """The other direction: a real new name is still admitted, with evidence.
+
+        Two different kinds of evidence, because there are exactly two: an
+        identity the run READ upstream, and an internal capital. A name with
+        neither - "North Mini Code Free" on a page whose catalogue has not seen
+        it - is not distinguishable from "All models", so it waits for the next
+        catalogue read. That is the deliberate trade: a missed model shows up
+        as a catalogue entry the policy page will describe next run, while a
+        fabricated one alerts about a model the source never states.
+        """
+        for line, key, known in (
             ("North Mini Code Free is free on OpenCode for a limited time.",
-             "north-mini-code-free"),
+             "north-mini-code-free", {"north-mini-code-free"}),
             ("MiniMax M2 Free is free on OpenCode for a limited time.",
-             "minimax-m2-free"),
+             "minimax-m2-free", None),
         ):
             with self.subTest(line=line):
-                self.assertEqual(set(watch.extract_policy([line])), {key})
+                self.assertEqual(
+                    set(watch.extract_policy([line], known=known)), {key})
 
 
 
@@ -2103,8 +2272,9 @@ class BackgroundFreeModelTests(unittest.TestCase):
                 "your data for model training.")
         was = "GLM-5.3-Flash Free is free on OpenCode for a limited time."
         now = "GLM-5.3-Flash Free costs nothing on OpenCode for a limited time."
-        before = watch.extract_policy([was + tail])
-        after = watch.extract_policy([now + tail])
+        known = {"glm-5-3-flash-free"}
+        before = watch.extract_policy([was + tail], known=known)
+        after = watch.extract_policy([now + tail], known=known)
         self.assertEqual(set(before), set(after))
         self.assertEqual(set(before), {"glm-5-3-flash-free"})
         self.assertEqual(watch.diff(
@@ -2187,7 +2357,7 @@ class BackgroundFreeModelTests(unittest.TestCase):
                      "All free models on this page are free to use on OpenCode "
                      "for a limited time."):
             with self.subTest(line=line):
-                keys = watch.extract_policy([GLM_PROSE, line])
+                keys = watch.extract_policy([GLM_PROSE, line], known=GLM_KNOWN)
                 self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
                 self.assertEqual(watch.diff(
                     seeded,
