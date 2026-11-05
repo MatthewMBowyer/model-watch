@@ -1066,7 +1066,18 @@ def collect(config, previous=None):
         doc_url, prose = opencode_policy_text(
             known=policy_identities(cat, previous, providers),
             observed=observed_identities(cat, providers))
-        if prose:
+        # Identity evidence is what admits most entries, so an extraction made
+        # without the catalogue is provably INCOMPLETE rather than merely
+        # uncertain: measured on the live page, 2 of its 11 keys survive when
+        # models.dev is unreachable, and 1 of 4 on the fixture page when its
+        # opencode section is missing - the rest are admitted only by catalogue
+        # identity. Recording that would make the next healthy run announce the
+        # difference as newly documented - false alerts about models the page
+        # has always named. The previous baseline is kept instead, exactly as
+        # for a dead policy source (INV-10), and a first run records nothing so
+        # the next healthy run has no baseline to compare against and stays
+        # silent.
+        if prose and meta["providers_ok"].get("opencode"):
             meta["policy_ok"] = True
             snap["policy"]["opencode"] = {
                 key: {"text": text, "class": classify(text)} for key, text in prose.items()

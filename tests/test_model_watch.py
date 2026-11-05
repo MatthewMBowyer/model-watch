@@ -2588,6 +2588,89 @@ class FailureTests(unittest.TestCase):
         meta = {"catalog_ok": False, "policy_ok": True, "providers_ok": {"opencode": False}}
         self.assertEqual(watch.diff(old, new, {"opencode": {}}, config(), meta), [])
 
+    def test_a_dead_catalogue_does_not_record_a_partial_policy_map(self):
+        """Identity evidence admits most entries, so a dead catalogue under-reads.
+
+        Measured on the live page: with models.dev unreachable the same page
+        yields 2 of its 11 keys, because the other nine are admitted only by
+        catalogue identity. Recording that would make the next healthy run
+        announce those nine as newly documented - false alerts naming models the
+        page has always stated. So the run records nothing instead of something
+        provably incomplete, and the recovery reports no policy event at all.
+        """
+        # MiniMax carries an internal capital, so it is admitted with NO
+        # identity data: it is the entry that makes the degraded map non-empty
+        # and therefore the entry that proves the guard is doing the work.
+        minimax = ("MiniMax M2 Free is free on OpenCode for a limited time. "
+                   "Its provider retains your data for 30 days.")
+        page = DOC_PAGE.replace("</ul>", "<li>%s</li></ul>" % minimax, 1)
+        config_ = config()
+        with offline({watch.MODELS_DEV: "", watch.OPENCODE_DOCS[0]: page}):
+            degraded, _cat, meta = watch.collect(config_, {})
+        self.assertFalse(meta["catalog_ok"])
+        self.assertFalse(meta["policy_ok"])
+        self.assertEqual(degraded["policy"]["opencode"], {})
+        # ...and the under-read is real, not vacuous: without the guard the
+        # same page records that one key and drops the identity-only entries.
+        with offline({watch.MODELS_DEV: "", watch.OPENCODE_DOCS[0]: page}):
+            unguarded_keys = watch.opencode_policy_text(
+                known=frozenset(), observed=frozenset())[1]
+        self.assertEqual(sorted(unguarded_keys), ["minimax-m2-free"])
+        # Recovery: the catalogue is back, so the real page extracts in full and
+        # nothing is announced as new against the (empty) degraded baseline.
+        with offline({watch.OPENCODE_DOCS[0]: page}):
+            healed, cat, meta2 = watch.collect(config_, degraded)
+        self.assertTrue(meta2["policy_ok"])
+        self.assertEqual(sorted(healed["policy"]["opencode"]),
+                         ["beam-free", "flint-40b-free", "glm-5-3-flash-free",
+                          "minimax-m2-free"])
+        events = watch.diff(degraded, healed, cat, config_, meta2)
+        self.assertEqual([e for e in events if e["kind"].startswith("policy")], [])
+
+    def test_a_dead_catalogue_keeps_the_baseline_it_already_held(self):
+        """The guard must not lose what the previous run knew (INV-10)."""
+        previous = state(
+            free={"opencode": ["glm-5-3-flash-free"]},
+            policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})},
+            docs={"https://opencode.ai/v2/docs/console/models/": "abc123abc123abc1"})
+        minimax = ("MiniMax M2 Free is free on OpenCode for a limited time. "
+                   "Its provider retains your data for 30 days.")
+        page = DOC_PAGE.replace("</ul>", "<li>%s</li></ul>" % minimax, 1)
+        with offline({watch.MODELS_DEV: "", watch.OPENCODE_DOCS[0]: page}):
+            snap, _cat, meta = watch.collect(config(), previous)
+        self.assertFalse(meta["catalog_ok"])
+        self.assertFalse(meta["policy_ok"])
+        self.assertEqual(sorted(snap["policy"]["opencode"]), ["glm-5-3-flash-free"])
+        self.assertEqual(snap["docs"], previous["docs"])
+
+    def test_a_catalogue_without_the_provider_section_is_equally_incomplete(self):
+        """The class: UNREACHABLE and PRESENT-BUT-EMPTY under-read identically.
+
+        A catalogue that answers but carries no `opencode` section supplies just
+        as little identity evidence as one that timed out, so the same guard has
+        to cover it. Measured: the page records 1 key instead of 4.
+        """
+        minimax = ("MiniMax M2 Free is free on OpenCode for a limited time. "
+                   "Its provider retains your data for 30 days.")
+        page = DOC_PAGE.replace("</ul>", "<li>%s</li></ul>" % minimax, 1)
+        empty_catalogue = json.dumps({"openrouter": {"models": {}}})
+        with offline({watch.MODELS_DEV: empty_catalogue,
+                      watch.OPENCODE_DOCS[0]: page}):
+            snap, _cat, meta = watch.collect(config(), {})
+        self.assertTrue(meta["catalog_ok"])
+        self.assertFalse(meta["providers_ok"]["opencode"])
+        self.assertFalse(meta["policy_ok"])
+        self.assertEqual(snap["policy"]["opencode"], {})
+
+    def test_a_healthy_catalogue_still_records_the_full_map(self):
+        """The guard must not fire on a healthy run - the maps must be equal."""
+        with offline():
+            snap, _cat, meta = watch.collect(config(), {})
+        self.assertTrue(meta["providers_ok"]["opencode"])
+        self.assertTrue(meta["policy_ok"])
+        self.assertEqual(sorted(snap["policy"]["opencode"]),
+                         ["beam-free", "flint-40b-free", "glm-5-3-flash-free"])
+
     def test_dead_upstream_collect_keeps_previous_baseline(self):
         previous = state(free={"opencode": ["beam-free"]},
                          policy={"opencode": policy_map(**{"beam-free": BEAM_PROSE})},
