@@ -287,18 +287,97 @@ def opencode_policy_text():
     return None, {}
 
 
+# A negation cue immediately before a clause reverses it ("does not use your
+# data for model training"). Scoped to a window because one sentence can hold a
+# negated training clause AND a retention window that is not negated.
+_NEGATION = re.compile(
+    r"(?:does|do|did|will|would|shall|can|could|may)\s+not\b|\bnot\b|\bnever\b|\bno\b|"
+    r"\bwithout\b|\bcannot\b")
+
+# Training / model-improvement clauses. A provider that trains on what you send
+# has a worse privacy posture than one that keeps a copy, so this is evaluated
+# BEFORE the zero-retention phrase: "follows a zero-retention policy and may use
+# your data for model training" is a training statement, not a clean one.
+TRAIN_PATTERNS = (
+    r"\b(?:may|might|will|would|can|could|also)\s+(?:also\s+)?(?:use|uses)\s+(?:your|the|all|this)\s+"
+    r"(?:data|inputs?|prompts?|content)\s+(?:to\s+)?(?:train|improve)",
+    r"\b(?:use|uses|used)\s+(?:your|the|all|this)\s+(?:data|inputs?|prompts?|content)\s+"
+    r"(?:to\s+train|for\s+(?:model\s+)?training|to\s+improve)",
+    r"\b(?:may|might|will|would|can|could)\s+(?:also\s+)?(?:train|learn)\s+(?:on|from|using)\s+"
+    r"(?:your|the)\s+(?:data|inputs?|prompts?|content)",
+    r"\b(?:trains?|trained|training)\s+(?:on|from|using)\s+(?:your|the)\s+(?:data|inputs?|prompts?|content)",
+    r"\bfor\s+(?:model\s+)?training\b",
+    r"\bto\s+(?:train|improve)\s+(?:the|its|our|their)\s+(?:model|models|products?|service)",
+    r"\b(?:train|improve)\s+(?:the|its|our|their)\s+(?:model|models|products?|service)\b",
+    r"\bcollect(?:s|ing)?\s+feedback\b",
+)
+
+# Retention windows, in days. Only days are converted; a statement in hours or
+# months is quoted as-is rather than guessed at.
+_RETAIN_VERB = (r"(?:keeps?|kept|stores?|stored|holds?|held|retains?|retained|"
+                r"are\s+kept|is\s+kept|are\s+stored|is\s+stored|are\s+retained|is\s+retained|"
+                r"logs?|logged|archives?|archived)")
+RETAIN_PATTERNS = (
+    re.compile(_RETAIN_VERB + r"[^.;]{0,48}?\bfor\s+(\d+)\s+days?\b"),
+    re.compile(r"\b(\d+)[-\s]day\s+(?:retention|storage|log)\b"),
+    re.compile(r"\bdeletes?[^.;]{0,48}?\bafter\s+(\d+)\s+days?\b"),
+    re.compile(_RETAIN_VERB + r"[^.;]{0,48}?\bwithin\s+(\d+)\s+days?\b"),
+)
+
+
+def _negated(low, start):
+    """True when a negation cue governs this position.
+
+    The window stops at the previous clause boundary, so "does not use your data
+    for model training and keeps your prompts for 30 days" has its training
+    clause negated without also suppressing the retention window that follows.
+    """
+    window = low[:start]
+    for boundary in (". ", "; ", ", ", " and ", " but "):
+        cut = window.rfind(boundary)
+        if cut != -1:
+            window = window[cut + len(boundary):]
+    return bool(_NEGATION.search(window))
+
+
+def _first_unanchored(patterns, low):
+    """First pattern match that is not negated by the words before it."""
+    for pattern in patterns:
+        for m in re.finditer(pattern, low):
+            if not _negated(low, m.start()):
+                return m
+    return None
+
+
+def retention_window_days(low):
+    """The stated retention window in days, or None."""
+    matches = []
+    for pattern in RETAIN_PATTERNS:
+        for m in re.finditer(pattern, low):
+            if not _negated(low, m.start()):
+                try:
+                    matches.append(int(m.group(1)))
+                except (TypeError, ValueError):
+                    continue
+    return max(matches) if matches else None
+
+
 def classify(prose):
-    low = prose.lower()
-    if "zero-retention" in low or "zero retention" in low:
-        return "zero-retention"
-    m = re.search(r"retains?(?:\s+(?:it|them|data|prompts?|inputs?|outputs?|your\s+data|"
-                  r"the\s+(?:data|prompts?)))?\s+for\s+(\d+)\s+days", low)
-    if m:
-        return "retained-%sd" % m.group(1)
-    negated = "does not use your data" in low or "not used for" in low or "not use your data" in low
-    if not negated and re.search(r"improve (the model|nvidia products|our products)|collect feedback", low):
+    """The data-protection class of one model's statement.
+
+    Order is deliberate: a training clause is checked FIRST, so a statement that
+    both claims zero retention and reserves the right to train is reported as
+    trains-or-logs rather than as the better class.
+    """
+    low = " ".join((prose or "").lower().split())
+    if _first_unanchored(TRAIN_PATTERNS, low):
         return "trains-or-logs"
-    if "logged" in low:
+    if re.search(r"zero[-\s]retention", low):
+        return "zero-retention"
+    days = retention_window_days(low)
+    if days is not None:
+        return "retained-%sd" % days
+    if re.search(r"\blogged\b|\blogs\b|\blogging\b", low):
         return "logged"
     return "unstated"
 
@@ -356,6 +435,33 @@ def policy_name(text, fallback):
     """The model's own name, as the fetched prose states it."""
     head = re.split(ENTRY_VERBS, " ".join((text or "").split()), maxsplit=1)[0].strip()
     return head.strip(".,;:") or fallback
+
+
+# Words that make a sentence part of the privacy promise. Kept as a named
+# constant so the same test that forbids marketing churn can assert against it.
+PRIVACY_TERMS = re.compile(
+    r"zero[-\s]retention|retains?|retained|keeps?|keep|stored?|store|holds?|held|"
+    r"logs?|logged|archives?|\bdays?\b|train|training|improve the model|"
+    r"collect feedback|privacy|your data|your prompts|your inputs?|"
+    r"disclos\w*|shar\w*|third[\s-]part\w*|law enforcement|subpoena|"
+    r"sell|sold|transfer\w*|legal (?:request|process)|aggregate")
+
+
+def retention_sentences(text):
+    """The sentences in `text` that carry a retention/privacy statement.
+
+    Diffing the whole line would fire on a reworded marketing clause ("free for
+    a limited time" -> "free for a short time"), which is noise. Diffing only
+    these sentences catches a reworded privacy promise at ANY class - including
+    a new disclosure or sharing clause that leaves the class alone - which is
+    the whole point of the tool, and stays silent on everything else.
+    """
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text or "") if s.strip()]
+    kept = []
+    for sentence in sentences:
+        if PRIVACY_TERMS.search(sentence.lower()):
+            kept.append(" ".join(sentence.lower().split()))
+    return kept
 
 
 def policy_block_digest(policies):
@@ -520,14 +626,24 @@ def diff(old, new, cat, config, meta=None):
                 continue
             for key in sorted(set(models) & set(before)):
                 was, now = before.get(key) or {}, models.get(key) or {}
-                if was.get("class") != now.get("class"):
-                    events.append({
-                        "kind": "policy_changed", "provider": pid, "model": key,
-                        "watched": bool(watched_entry(config, pid, key)),
-                        "display": _display_name(config, pid, key, now.get("text")),
-                        "class_before": was.get("class"), "class_after": now.get("class"),
-                        "text_before": was.get("text") or "", "text_after": now.get("text") or "",
-                    })
+                class_changed = was.get("class") != now.get("class")
+                # A retention promise can be reworded without changing its
+                # class ("retains it for 30 days" -> "keeps your prompts for 30
+                # days"), and that is exactly the edit the tool exists to catch.
+                # Only the retention-bearing sentences are compared, so a
+                # reworded marketing clause stays silent (INV-18).
+                wording_changed = (retention_sentences(was.get("text"))
+                                   != retention_sentences(now.get("text")))
+                if not class_changed and not wording_changed:
+                    continue
+                events.append({
+                    "kind": "policy_changed", "provider": pid, "model": key,
+                    "watched": bool(watched_entry(config, pid, key)),
+                    "display": _display_name(config, pid, key, now.get("text")),
+                    "class_before": was.get("class"), "class_after": now.get("class"),
+                    "text_before": was.get("text") or "", "text_after": now.get("text") or "",
+                    "class_changed": class_changed, "wording_changed": wording_changed,
+                })
             for key in sorted(set(models) - set(before)):
                 now = models.get(key) or {}
                 rank = severity(now.get("class"))
@@ -662,8 +778,15 @@ def _retention_item(event):
     if event["kind"] == "policy_changed":
         lines.append("%s (%s) changed what its provider says about your data."
                      % (name, provider_label(pid)))
-        lines.append("Before, it %s." % class_clause(event.get("class_before"), "past"))
-        lines.append("Now it %s." % class_clause(event.get("class_after")))
+        if event.get("class_changed", True):
+            lines.append("Before, it %s." % class_clause(event.get("class_before"), "past"))
+            lines.append("Now it %s." % class_clause(event.get("class_after")))
+        else:
+            # A reworded promise at the same class is a wording change, not a
+            # downgrade: saying "still keeps your data for 30 days" and quoting
+            # both sentences is the truthful report.
+            lines.append("What it covers has not changed - it still %s - but the "
+                         "wording has." % class_clause(event.get("class_after")))
         lines.append("Before: \"%s\"" % wrap(event.get("text_before") or "unstated"))
         lines.append("Now: \"%s\"" % wrap(event.get("text_after") or "unstated"))
         carrier = carrier_sentence(event.get("text_after"), event.get("class_after"))

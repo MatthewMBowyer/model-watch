@@ -507,6 +507,141 @@ class RetentionTests(unittest.TestCase):
         ]))
 
 
+class RetentionWordingTests(unittest.TestCase):
+    """MW-RETENTION-PROSE-NOT-DIFFED and MW-CLASSIFIER-MISSES-COMMON-WORDING.
+
+    The reviewer measured that a retention statement reworded at the SAME class
+    alerted nothing, and that the natural training/retention phrasings were all
+    classified `unstated`. These fixtures reproduce those exact wordings.
+    """
+
+    # The reviewer's own two edits, verbatim.
+    BEAM_DISCLOSURE = BEAM_PROSE + " It may disclose it to law enforcement on request."
+    GLM_SHARING = GLM_PROSE + " We may share your prompts with our partners."
+    BEAM_KEEPS_30D = ("Beam Free is free on OpenCode for a limited time. "
+                      "Its provider keeps your prompts for 30 days.")
+    GLM_MIXED = ("GLM-5.3-Flash Free is free on OpenCode for a limited time. Its "
+                 "provider follows a zero-retention policy and may use your data for "
+                 "model training.")
+
+    def test_same_class_retention_reword_is_not_silent(self):
+        """The defect: 0 events before the fix, a quoted wording change after."""
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{"beam-free": BEAM_PROSE})}),
+            state(policy={"opencode": policy_map(**{"beam-free": self.BEAM_DISCLOSURE})}),
+            catalog({}), config(),
+        )
+        self.assertEqual([e["kind"] for e in events], ["policy_changed"])
+        self.assertFalse(events[0]["class_changed"])
+        self.assertTrue(events[0]["wording_changed"])
+        text = watch.render(events, config())
+        self.assertIn('Now: "%s"' % watch.wrap(self.BEAM_DISCLOSURE), text)
+        self.assertIn('Before: "%s"' % watch.wrap(BEAM_PROSE), text)
+
+    def test_same_class_reword_reports_wording_not_a_downgrade(self):
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{"beam-free": BEAM_PROSE})}),
+            state(policy={"opencode": policy_map(**{"beam-free": self.BEAM_KEEPS_30D})}),
+            catalog({}), config(),
+        )
+        text = watch.render(events, config())
+        self.assertIn("What it covers has not changed - it still keeps your data for "
+                      "30 days - but the wording has.", text)
+        self.assertNotIn("Before, it kept", text)
+        self.assertNotIn("Now it does not say what it does with your data", text)
+
+    def test_sharing_clause_alone_fires(self):
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})}),
+            state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": self.GLM_SHARING})}),
+            catalog({}), config(),
+        )
+        self.assertEqual([e["kind"] for e in events], ["policy_changed"])
+
+    def test_marketing_reword_stays_silent(self):
+        """INV-18 still holds: only the privacy sentences are compared."""
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{"beam-free": BEAM_PROSE})}),
+            state(policy={"opencode": policy_map(**{
+                "beam-free": BEAM_PROSE.replace("for a limited time", "for a short time")})}),
+            catalog({}), config(),
+        )
+        self.assertEqual(events, [])
+
+    def test_new_model_that_may_use_your_data_for_training_fires(self):
+        """AC-15 defect (a): this wording classified `unstated` and stayed silent."""
+        prose = ("Nova Free is free on OpenCode for a limited time. Its provider may "
+                 "use your data for model training.")
+        self.assertEqual(watch.classify(prose), "trains-or-logs")
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})}),
+            state(policy={"opencode": policy_map(**{
+                "glm-5-3-flash-free": GLM_PROSE, "nova-free": prose})}),
+            catalog({}), config(),
+        )
+        self.assertEqual([e["kind"] for e in events], ["policy_new_bad"])
+
+    def test_retention_window_is_never_reported_as_unstated(self):
+        """AC-25 defect (b): the alert must not deny what the quoted text states."""
+        for prose in (self.BEAM_KEEPS_30D,
+                      "Beam Free is free on OpenCode. It stores your prompts for 30 days.",
+                      "Beam Free is free on OpenCode. It follows a 30-day retention policy."):
+            cls = watch.classify(prose)
+            self.assertEqual(cls, "retained-30d", prose)
+            events = watch.diff(
+                state(policy={"opencode": policy_map(**{"beam-free": GLM_PROSE})}),
+                state(policy={"opencode": policy_map(**{"beam-free": prose})}),
+                catalog({}), config(),
+            )
+            self.assertNotIn("does not say what it does with your data",
+                             watch.render(events, config()))
+
+    def test_mixed_statement_is_not_reported_as_zero_retention(self):
+        """AC-25 defect (c): a worse posture must never read as the better class."""
+        self.assertEqual(watch.classify(self.GLM_MIXED), "trains-or-logs")
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": self.GLM_MIXED})}),
+            state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})}),
+            catalog({}), config(),
+        )
+        self.assertEqual([e["kind"] for e in events], ["policy_changed"])
+        self.assertEqual(events[0]["class_before"], "trains-or-logs")
+        self.assertEqual(events[0]["class_after"], "zero-retention")
+
+    def test_negated_training_clause_does_not_suppress_a_retention_window(self):
+        self.assertEqual(
+            watch.classify("It does not use your data for model training and retains "
+                           "it for 30 days for safety reasons."),
+            "retained-30d")
+        self.assertEqual(
+            watch.classify("Its provider follows a zero-retention policy and does not "
+                           "use your data for model training."),
+            "zero-retention")
+
+    def test_common_training_phrasings_are_all_recognised(self):
+        for prose in (
+            "Its provider may use your data for model training.",
+            "The provider will use your data to train its models.",
+            "It trains on your data.",
+            "The provider may train on your prompts.",
+            "We may use your prompts to improve the model.",
+            "It collects feedback and improves the model.",
+        ):
+            self.assertEqual(watch.classify(prose), "trains-or-logs", prose)
+
+    def test_common_retention_phrasings_are_all_recognised(self):
+        cases = {
+            "Its provider keeps your prompts for 30 days.": "retained-30d",
+            "It stores your prompts for 30 days.": "retained-30d",
+            "We hold your data for 30 days.": "retained-30d",
+            "Your prompts are kept for 30 days.": "retained-30d",
+            "It follows a 30-day retention policy.": "retained-30d",
+            "The provider deletes your data after 7 days.": "retained-7d",
+        }
+        for prose, expected in cases.items():
+            self.assertEqual(watch.classify(prose), expected, prose)
+
+
 # ------------------------------------------------------------------ junk keys
 
 class JunkKeyTests(unittest.TestCase):
@@ -937,6 +1072,20 @@ class BackgroundFreeModelTests(unittest.TestCase):
     def _owner_summary(self):
         return open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                  os.pardir, "OWNER_SUMMARY.md"), encoding="utf-8").read()
+
+    def test_owner_summary_describes_the_wording_diff(self):
+        """MW-OWNER-SUMMARY-RETENTION-CLAIM: the doc must describe what ships."""
+        doc = self._owner_summary()
+        self.assertIn("This fires on a change to\nthe meaning AND on a change to the "
+                      "wording alone", doc)
+        self.assertIn('becoming "keeps your prompts for 30 days" counts', doc)
+
+    def test_owner_summary_documents_the_free_again_headline(self):
+        self.assertIn('"One model you watch is free again: X."', self._owner_summary())
+
+    def test_owner_summary_churn_paragraph_matches_the_privacy_sentence_rule(self):
+        self.assertIn("compares only\n  the sentences that make a privacy promise",
+                      self._owner_summary())
 
     def test_owner_summary_no_longer_promises_group_c_is_silent(self):
         doc = self._owner_summary()

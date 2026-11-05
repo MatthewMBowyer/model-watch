@@ -73,7 +73,9 @@ A model on your watch list that had stopped being free is free again. Nothing to
 do unless you had stopped using it because it cost money.
 
 **"A model you watch changed its data-retention wording: X."**
-The provider changed what it says about your prompts. Read the quoted before and
+The provider changed what it says about your prompts. This fires on a change to
+the meaning AND on a change to the wording alone - "retains it for 30 days"
+becoming "keeps your prompts for 30 days" counts. Read the quoted before and
 after. If it moved from zero-retention to anything else, decide whether you are
 still comfortable sending it work.
 
@@ -96,8 +98,10 @@ means a quiet day, not a broken tool.
 - It does not guess. If a source does not state a price, a date or a retention
   rule, the alert says `unstated` instead of making something up.
 - It does not alert on page churn. Editing the navigation bar, the marketing
-  copy or the layout of the provider's page produces no alert. Only a change to
-  an actual retention statement, price or model list does.
+  copy or the layout of the provider's page produces no alert. It compares only
+  the sentences that make a privacy promise, so a reworded promise alerts even
+  when its meaning is unchanged, and a price or model-list change alerts as it
+  always did.
 - It does not treat a broken fetch as news. If the provider's page is down, the
   tool records "could not check" and stays quiet. It will never tell you that
   every model disappeared just because a page failed to load.
