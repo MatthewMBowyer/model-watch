@@ -49,7 +49,10 @@ happened" apart from "the tool forgot to look".
 
 Under each item it says, in plain words, what the model is, what changed, and
 what to do. For a retention change it quotes the sentence as it was and the
-sentence as it is now, so you can judge the change yourself.
+sentence as it is now, and names which sentence actually changed - so an added
+"we may disclose it to law enforcement" clause is shown to you, not buried
+inside a long quote. The quoted before and after text is there so you can judge
+the change yourself.
 
 One model is one item. If a model you watch disappears from the catalogue you
 get a single entry saying it is no longer listed, and the headline counts one

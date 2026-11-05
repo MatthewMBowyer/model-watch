@@ -319,7 +319,7 @@ _RETAIN_VERB = (r"(?:keeps?|kept|stores?|stored|holds?|held|retains?|retained|"
                 r"logs?|logged|archives?|archived)")
 RETAIN_PATTERNS = (
     re.compile(_RETAIN_VERB + r"[^.;]{0,48}?\bfor\s+(\d+)\s+days?\b"),
-    re.compile(r"\b(\d+)[-\s]day\s+(?:retention|storage|log)\b"),
+    re.compile(r"\b(\d+)[-\s]days?\s+(?:retention|storage|log)\b"),
     re.compile(r"\bdeletes?[^.;]{0,48}?\bafter\s+(\d+)\s+days?\b"),
     re.compile(_RETAIN_VERB + r"[^.;]{0,48}?\bwithin\s+(\d+)\s+days?\b"),
 )
@@ -409,9 +409,37 @@ def severity(cls):
     return None
 
 
+def _sentences(text):
+    return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text or "") if s.strip()]
+
+
+def changed_sentence(before, after):
+    """The sentence in `after` that `before` does not contain.
+
+    A wording change is often an ADDED clause ("... It may disclose it to law
+    enforcement on request."). Naming the class-carrying sentence there would
+    point the owner at the one line that did not change, so a changed sentence
+    that makes a privacy promise wins.
+    """
+    old = {" ".join(s.lower().split()) for s in _sentences(before)}
+    new = [s for s in _sentences(after) if " ".join(s.lower().split()) not in old]
+    for sentence in new:
+        if PRIVACY_TERMS.search(sentence.lower()):
+            return sentence
+    if new:
+        return new[0]
+    # A clause rewritten in place leaves no new sentence behind; the sentence
+    # that differs from its counterpart is the one that changed.
+    was = _sentences(before)
+    for index, sentence in enumerate(_sentences(after)):
+        if index >= len(was) or " ".join(sentence.lower().split()) != " ".join(was[index].lower().split()):
+            return sentence
+    return ""
+
+
 def carrier_sentence(text, cls):
     """The one sentence in `text` that carries the retention statement."""
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text or "") if s.strip()]
+    sentences = _sentences(text)
     if not sentences:
         return ""
     if cls == "zero-retention":
@@ -790,6 +818,11 @@ def _retention_item(event):
         lines.append("Before: \"%s\"" % wrap(event.get("text_before") or "unstated"))
         lines.append("Now: \"%s\"" % wrap(event.get("text_after") or "unstated"))
         carrier = carrier_sentence(event.get("text_after"), event.get("class_after"))
+        if not event.get("class_changed", True):
+            # A wording-only change is reported by the sentence that actually
+            # changed; the class-carrying sentence may be the one left intact.
+            carrier = changed_sentence(event.get("text_before"),
+                                       event.get("text_after")) or carrier
         if carrier:
             lines.append(wrap("The sentence carrying the change: \"%s\"" % carrier))
     elif event["kind"] == "policy_new_bad":

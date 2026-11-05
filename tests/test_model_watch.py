@@ -558,6 +558,34 @@ class RetentionWordingTests(unittest.TestCase):
         )
         self.assertEqual([e["kind"] for e in events], ["policy_changed"])
 
+    def test_same_class_reword_names_the_sentence_that_changed(self):
+        """An added clause is the change; the class sentence did not move.
+
+        Naming the class-carrying sentence here pointed the owner at the one
+        line that was left untouched, which is the opposite of what AC-19 asks.
+        """
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{"beam-free": BEAM_PROSE})}),
+            state(policy={"opencode": policy_map(**{"beam-free": self.BEAM_DISCLOSURE})}),
+            catalog({}), config(),
+        )
+        text = watch.render(events, config())
+        self.assertIn('The sentence carrying the change: "%s"'
+                      % "It may disclose it to law enforcement on request.", text)
+        self.assertNotIn('The sentence carrying the change: "%s"'
+                         % "Its provider does not use your data for model training and "
+                           "retains it for 30 days for safety reasons.", text)
+
+    def test_sharing_clause_names_the_added_sentence(self):
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})}),
+            state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": self.GLM_SHARING})}),
+            catalog({}), config(),
+        )
+        self.assertIn('The sentence carrying the change: "%s"'
+                      % "We may share your prompts with our partners.",
+                      watch.render(events, config()))
+
     def test_marketing_reword_stays_silent(self):
         """INV-18 still holds: only the privacy sentences are compared."""
         events = watch.diff(
@@ -636,6 +664,7 @@ class RetentionWordingTests(unittest.TestCase):
             "We hold your data for 30 days.": "retained-30d",
             "Your prompts are kept for 30 days.": "retained-30d",
             "It follows a 30-day retention policy.": "retained-30d",
+            "It follows a 30 days retention policy.": "retained-30d",
             "The provider deletes your data after 7 days.": "retained-7d",
         }
         for prose, expected in cases.items():
