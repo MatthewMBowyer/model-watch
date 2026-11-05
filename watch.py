@@ -333,6 +333,25 @@ _RETAIN_UNIT_SUFFIX = {"d": "d", "h": "h", "w": "w", "mo": "mo"}
 _RETAIN_UNIT_WORD = {"d": "day", "h": "hour", "w": "week", "mo": "month"}
 _RETAINED_CLASS = re.compile(r"retained-(\d+)(mo|d|h|w)$")
 
+# A NEGATED window that is still a stated cap: "we do not retain data for more
+# than 30 days" promises 30 days, not zero. Read as a cap before the no-retention
+# rule, which would otherwise call it zero-retention and overstate the promise.
+_CAPPED_WINDOW = re.compile(
+    r"\b(?:not|never|no longer)\b[^.;]{0,24}?\b(?:keeps?|stores?|retains?|holds?)\b"
+    r"[^.;]{0,32}?\b(?:more than|longer than|beyond|over)\s+(\d+)\s+" + _RETAIN_UNIT + r"\b")
+
+# An explicit promise NOT to keep a copy. This is a stated posture, not silence,
+# so it must never be reported as `unstated`.
+NO_RETAIN_PATTERNS = (
+    r"\b(?:do|does|did|will|would)\s+not\s+(?:keep|store|retain|hold|save|log)\b"
+    r"[^.;]{0,40}?\b(?:your|the|any|this)\s+(?:data|inputs?|prompts?|content|requests?)\b",
+    r"\bnever\s+(?:keeps?|stores?|retains?|holds?|saves?|logs?)\b"
+    r"[^.;]{0,40}?\b(?:your|the|any|this)\s+(?:data|inputs?|prompts?|content|requests?)\b",
+    r"\b(?:no|zero)\s+(?:data\s+|prompt\s+)?(?:retention|storage|logging)\b",
+    r"\b(?:discards?|deletes?|erases?|purges?)\s+(?:your|the|any)\s+"
+    r"(?:data|inputs?|prompts?|content)\s+(?:immediately|at once|right away)\b",
+)
+
 
 def _negated(low, start):
     """True when a negation cue governs this position.
@@ -383,6 +402,10 @@ def retention_window(low):
                 continue
             unit = _unit_key(m.group(2) if m.lastindex and m.lastindex >= 2 else "")
             matches.append((count * _RETAIN_UNIT_DAYS[unit], count, unit))
+    for m in _CAPPED_WINDOW.finditer(low):
+        unit = _unit_key(m.group(2))
+        count = int(m.group(1))
+        matches.append((count * _RETAIN_UNIT_DAYS[unit], count, unit))
     if not matches:
         return None
     _, count, unit = max(matches)
@@ -404,6 +427,13 @@ def classify(prose):
     window = retention_window(low)
     if window is not None:
         return "retained-%s%s" % (window[0], _RETAIN_UNIT_SUFFIX[window[1]])
+    # A stated refusal to keep a copy ("we do not retain your data") is a
+    # no-copy claim, not an absent one. Left as `unstated` the alert would print
+    # "it does not say what it does with your data" over prose that plainly does.
+    # A stated window outranks this, so "does not retain for more than 30 days"
+    # keeps its window.
+    if _first_unanchored(NO_RETAIN_PATTERNS, low):
+        return "zero-retention"
     if re.search(r"\blogged\b|\blogs\b|\blogging\b", low):
         return "logged"
     return "unstated"
@@ -474,6 +504,14 @@ def carrier_sentence(text, cls):
     if not sentences:
         return ""
     if cls == "zero-retention":
+        # A refusal ("we do not retain your data", "no data retention") carries
+        # the class as surely as the named policy does, and must out-rank a
+        # marketing sentence that happens to come first.
+        for sentence in sentences:
+            low = " ".join(sentence.lower().split())
+            if ("zero-retention" in low or "zero retention" in low
+                    or _first_unanchored(NO_RETAIN_PATTERNS, low)):
+                return sentence
         keys = ("zero-retention", "zero retention")
     elif cls and cls.startswith("retained-"):
         # Any stated window, in whatever unit the provider wrote it.

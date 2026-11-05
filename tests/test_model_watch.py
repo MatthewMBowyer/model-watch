@@ -716,6 +716,69 @@ class RetentionWordingTests(unittest.TestCase):
                          "kept your data for 2 weeks")
         self.assertEqual(watch.severity("retained-2w"), watch.CLASS_SEVERITY["retained"])
 
+    def test_stated_refusal_to_keep_data_is_not_unstated(self):
+        """AC-25: a stated no-copy promise is a posture, not silence.
+
+        `unstated` renders "it does not say what it does with your data", which
+        is false over prose that says it keeps nothing. AC-23's severity order
+        also ranks zero-retention as the BEST class, so calling a refusal
+        `unstated` made a genuine improvement look like an unknown.
+        """
+        cases = {
+            "We do not retain your data.": "zero-retention",
+            "We never store your prompts.": "zero-retention",
+            "We do not keep any content.": "zero-retention",
+            "It deletes your data immediately.": "zero-retention",
+            "No data retention is applied.": "zero-retention",
+        }
+        for prose, expected in cases.items():
+            self.assertEqual(watch.classify(prose), expected, prose)
+            self.assertNotIn("does not say what it does with your data",
+                             watch.render([{
+                                 "kind": "policy_changed", "provider": "opencode",
+                                 "model": "x-free", "watched": True,
+                                 "text_before": "It keeps your data for 30 days.",
+                                 "text_after": prose,
+                                 "class_before": "retained-30d",
+                                 "class_after": expected}], config()), prose)
+
+    def test_negated_window_cap_is_read_as_the_cap_not_as_zero(self):
+        """"not ... more than 30 days" promises 30 days, not zero.
+
+        Reading it as zero-retention would overstate the provider's promise -
+        the same fabrication class in the opposite direction.
+        """
+        prose = "We do not retain your data for more than 30 days."
+        self.assertEqual(watch.classify(prose), "retained-30d")
+        self.assertEqual(watch.retention_window(prose.lower()), (30, "d"))
+
+    def test_unchanged_negated_training_clause_stays_retained(self):
+        """A negated training clause must not become a training claim."""
+        self.assertEqual(
+            watch.classify("Its provider does not use your data for model training "
+                           "and retains it for 30 days for safety reasons."),
+            "retained-30d")
+
+    def test_refusal_alert_names_the_refusal_sentence(self):
+        """The named sentence must be the promise, not the sentence before it.
+
+        A refusal sits after a marketing sentence, so falling back to the first
+        sentence pointed the owner at the one line that did not change.
+        """
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{
+                "beam-free": "Beam Free is free for a limited time. "
+                             "Its provider keeps your prompts for 30 days."})}),
+            state(policy={"opencode": policy_map(**{
+                "beam-free": "Beam Free is free for a limited time. "
+                             "Its provider does not retain your data."})}),
+            catalog({}), config(),
+        )
+        text = watch.render(events, config())
+        self.assertIn('The sentence carrying the change: "Its provider does not '
+                      'retain your data."', text)
+        self.assertIn("Now it keeps no copy of your data", text)
+
 
 # ------------------------------------------------------------------ junk keys
 
