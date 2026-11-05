@@ -1093,6 +1093,12 @@ class JunkKeyTests(unittest.TestCase):
             "GLM-5.3-Flash Free is offered free of charge on OpenCode for a limited time.",
             "GLM-5.3-Flash Free is free on OpenCode for a short while.",
             "GLM-5.3-Flash Free is currently free on OpenCode for a limited time.",
+            # Predicates the copula split did not know about. Heading on the
+            # copula verb made the whole first sentence the name, so these
+            # dropped the entry and fired a false "no longer described".
+            "GLM-5.3-Flash Free may be used at no cost on OpenCode for a limited time.",
+            "GLM-5.3-Flash Free costs nothing on OpenCode for a limited time.",
+            "GLM-5.3-Flash Free can be used for free on OpenCode for a limited time.",
             "Foo Free. Its provider retains your data for 30 days.",
         )
         for opener in openers:
@@ -1100,6 +1106,38 @@ class JunkKeyTests(unittest.TestCase):
                 got = watch.extract_policy([opener + tail])
                 self.assertEqual(len(got), 1, opener)
                 self.assertIn("retains your data for 30 days", list(got.values())[0])
+
+    def test_the_reader_data_is_never_a_model_name(self):
+        """A line whose subject is the data states a posture, not a model."""
+        for line in ("Requests are retained for 30 days.",
+                     "Your prompts are stored for 30 days.",
+                     "All data is purged after 30 days.",
+                     "Chat logs are archived for 30 days."):
+            with self.subTest(line=line):
+                self.assertTrue(watch.is_retention_sentence(line), line)
+                self.assertEqual(watch.extract_policy([line]), {}, line)
+
+    def test_any_free_predicate_keeps_the_name_it_follows(self):
+        """The head is the name, whatever the clause says after it.
+
+        A copula allowlist made the whole first sentence the head whenever the
+        free clause used a verb it did not list ("costs nothing", "may be used
+        at no cost", "can be used for free"), so the entry vanished and the next
+        run reported the model as no longer described.
+        """
+        openers = (
+            "GLM-5.3-Flash Free may be used at no cost on OpenCode for a limited time.",
+            "GLM-5.3-Flash Free costs nothing on OpenCode for a limited time.",
+            "GLM-5.3-Flash Free can be used for free on OpenCode for a limited time.",
+            "GLM-5.3-Flash Free comes at no charge on OpenCode for a limited time.",
+            "GLM-5.3-Flash Free remains free on OpenCode for a limited time.",
+            "GLM-5.3-Flash Free - free to use on OpenCode for a limited time.",
+        )
+        for opener in openers:
+            with self.subTest(opener=opener):
+                got = watch.extract_policy([opener + " Its provider retains your "
+                                            "data for 30 days for safety reasons."])
+                self.assertEqual(list(got), ["glm-5-3-flash-free"], opener)
 
     def test_reworded_free_clause_does_not_read_as_removed(self):
         """The consequence, not just the extraction: no false 'removed' alert."""
@@ -1514,6 +1552,25 @@ class BackgroundFreeModelTests(unittest.TestCase):
 
     def test_owner_summary_documents_the_free_again_headline(self):
         self.assertIn('"One model you watch is free again: X."', self._owner_summary())
+
+    def test_owner_summary_rewording_claim_is_true_of_the_shipped_rule(self):
+        """The doc promises a reworded free clause is not a disappearance."""
+        doc = self._owner_summary()
+        self.assertIn("does not mistake a rewording for a disappearance", doc)
+        tail = (" Its provider follows a zero-retention policy and does not use "
+                "your data for model training.")
+        was = "GLM-5.3-Flash Free is free on OpenCode for a limited time."
+        now = "GLM-5.3-Flash Free costs nothing on OpenCode for a limited time."
+        before = watch.extract_policy([was + tail])
+        after = watch.extract_policy([now + tail])
+        self.assertEqual(set(before), set(after))
+        self.assertEqual(set(before), {"glm-5-3-flash-free"})
+        self.assertEqual(watch.diff(
+            state(free={"opencode": ["glm-5-3-flash-free"]},
+                  policy={"opencode": policy_map(**before)}),
+            state(free={"opencode": ["glm-5-3-flash-free"]},
+                  policy={"opencode": policy_map(**after)}),
+            catalog({"glm-5.3-flash-free": model()}), config()), [])
 
     def test_owner_summary_churn_paragraph_matches_the_privacy_sentence_rule(self):
         doc = self._owner_summary()

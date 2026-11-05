@@ -233,19 +233,67 @@ def looks_like_model_name(phrase):
     return any(re.search(r"[A-Z0-9.]", t) for t in tokens)
 
 
+def _name_token(token):
+    """True for a token that can belong to a model name.
+
+    A name token carries a capital, a digit or a dotted version. A predicate
+    word ("may", "costs", "can", "is") carries none of them, which is what
+    lets the head be found without listing predicates: an allowlist of copulas
+    made "GLM-5.3-Flash Free may be used at no cost ..." head the whole first
+    sentence, which no longer looked like a name, so the entry was dropped and
+    the next run reported the model as "no longer described" while the page
+    still said it verbatim.
+    """
+    return bool(re.search(r"[A-Z0-9.]", token)) or "-" in token
+
+
+# A determiner opens a noun phrase but is never part of the name itself, so it
+# is consumed with the head and then dropped. Without that, "All requests are
+# retained for 30 days" headed on the bare determiner.
+_DETERMINERS = frozenset(
+    "the all any each every some most many few both no your our their its his her "
+    "this that these those".split())
+
+# The nouns the retention rule treats as the reader's data. A line that opens
+# with one of these states a posture about the data; it does not name a model,
+# so it cannot be a policy entry for one ("Requests are retained for 30 days"
+# is not a model called "Requests").
+_DATA_SUBJECTS = frozenset(
+    "data input inputs prompt prompts content request requests conversation "
+    "conversations message messages query queries upload uploads submission "
+    "submissions chat chats log logs information usage record records copy "
+    "copies".split())
+
+
 def policy_head(line):
     """The model name a policy line opens with.
 
-    Taken from the FIRST SENTENCE, not from the whole line: a page may state the
-    model and then start a new sentence ("GLM-5.3-Flash Free. Free to use on
-    OpenCode for a limited time."), and splitting only on a copula made that
-    head the entire line, which no longer looked like a name. The entry was
-    then dropped, and the next run reported the model as "no longer described"
-    while the page still said it verbatim.
+    Taken from the FIRST SENTENCE, so a page may state the model and then start
+    a new sentence ("GLM-5.3-Flash Free. Free to use on OpenCode for a limited
+    time."). Within that sentence the head is the leading run of name-shaped
+    tokens behind any determiners; the first token that is not one begins the
+    assertion about the model, which is why the predicate need not be written
+    down anywhere. A line whose head would be the reader's data names no model
+    at all, and a head that is not name-shaped (the line opens with its claim
+    rather than with the model) falls back to the copula split the older
+    entries were keyed with.
     """
     first = re.split(r"(?<=[.!?])\s+", " ".join(line.split()), maxsplit=1)[0]
-    head = re.split(ENTRY_VERBS, first, maxsplit=1)[0]
-    return head.strip().strip(".,;:")
+    run = []
+    for token in first.split():
+        word = token.strip(".,;:").lower()
+        if word in _DETERMINERS:
+            if run:
+                break
+            continue
+        if not run and word in _DATA_SUBJECTS:
+            return ""
+        if not _name_token(token):
+            break
+        run.append(token)
+    if run:
+        return " ".join(run).strip().strip(".,;:")
+    return re.split(ENTRY_VERBS, first, maxsplit=1)[0].strip().strip(".,;:")
 
 
 def asserts_about_model(line):
@@ -579,9 +627,13 @@ def carrier_sentence(text, cls):
 
 
 def policy_name(text, fallback):
-    """The model's own name, as the fetched prose states it."""
-    head = re.split(ENTRY_VERBS, " ".join((text or "").split()), maxsplit=1)[0].strip()
-    return head.strip(".,;:") or fallback
+    """The model's own name, as the fetched prose states it.
+
+    Uses the same head rule the extractor keys on, so the name an alert shows
+    the owner is the name the entry was found under. Splitting on a copula here
+    printed a whole free clause as the model's name.
+    """
+    return policy_head(text or "") or fallback
 
 
 # A sentence counts as a retention/privacy statement only when it STRUCTURALLY

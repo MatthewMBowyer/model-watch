@@ -109,6 +109,11 @@ means a quiet day, not a broken tool.
   when its meaning is unchanged, and a price or model-list change alerts as it
   always did. Naming the provider is not a privacy statement: "the provider
   supports prompt caching" says nothing about your data and stays silent.
+- It does not mistake a rewording for a disappearance. If the provider rewords
+  the free clause above a retention promise - "is free on OpenCode" becoming
+  "costs nothing on OpenCode" - the model is still recognised, so it stays
+  quiet instead of telling you the model is no longer described when the page
+  still says it.
 - It does not treat a broken fetch as news. If the provider's page is down, the
   tool records "could not check" and stays quiet. It will never tell you that
   every model disappeared just because a page failed to load.
