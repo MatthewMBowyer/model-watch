@@ -6,7 +6,7 @@ You never need to open `watch.py`.
 
 ## What it watches
 
-Three things, twice a day, for free:
+Three things, every six hours, for free:
 
 1. **The free models you actually use.** Right now that is
    `glm-5.3-flash-free`, `deepseek-v4.1-flash-free` and `kimi-k2.5-free`
