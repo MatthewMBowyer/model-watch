@@ -1387,6 +1387,107 @@ class JunkKeyTests(unittest.TestCase):
         known = {"beam-free-pricing"}
         self.assertEqual(set(watch.extract_policy([line], known=known)), {"beam-free-pricing"})
 
+    # MW-EXTRACTOR-LABEL-VERSION-ROUTE. The fourth shape of the same class. Each
+    # earlier fix tightened the shape a LABEL had to carry and left the next one
+    # open: any digit closed "Section 3:", a dotted version closed "3.1:", and
+    # both were still numbers, which is how a page numbers its headings. The
+    # rule is now the same on BOTH routes: a known identity, or an internal
+    # capital. A number of any shape accepts nothing.
+    NUMBERED_VERSION_LABELS = (
+        "3.1 Retention terms: requests are retained for 30 days.",
+        "Section 3.1: requests are retained for 30 days.",
+        "Table 4.2: requests are retained for 30 days.",
+        "Figure 2.1: requests are retained for 30 days.",
+        "Step 4.2: requests are retained for 30 days.",
+        "Changelog v1.2: requests are logged for 30 days.",
+        "v2.1 Changes: data is retained for 30 days.",
+        "2026.11 Update: data is retained for 30 days.",
+        "Release 3.0: data is retained for 30 days.",
+        "Beta 1.2: data is retained for 30 days.",
+        "API v3.1: data is retained for 30 days.",
+        "5.2 Privacy: requests are retained for 30 days.",
+        "1.1 Free models: requests are retained for 30 days.",
+        "2.4 Data retention: prompts are kept for 30 days.",
+        "3.1: requests are retained for 30 days.",
+    )
+
+    def test_a_numbered_or_versioned_heading_never_becomes_a_policy_key(self):
+        """A number numbers a heading; it does not make a heading a model."""
+        known = {"beam-free", "glm-5-3-flash-free"}
+        for line in self.NUMBERED_VERSION_LABELS:
+            with self.subTest(line=line):
+                self.assertEqual(watch.extract_policy([line], known=known), {}, line)
+                self.assertEqual(watch.extract_policy([line]), {}, line)
+
+    def test_a_numbered_or_versioned_heading_alerts_nothing_against_a_seeded_baseline(self):
+        """The empty-baseline trap: with nothing seeded, diff() skips policy.
+
+        The baseline here holds the real GLM statement, so a spurious key would
+        reach diff() and render as an alert naming a model the page never says.
+        """
+        before = state(free={"opencode": ["glm-5-3-flash-free"]},
+                       policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
+        for line in self.NUMBERED_VERSION_LABELS:
+            with self.subTest(line=line):
+                keys = watch.extract_policy([GLM_PROSE, line])
+                self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
+                events = watch.diff(
+                    before,
+                    state(free={"opencode": ["glm-5-3-flash-free"]},
+                          policy={"opencode": policy_map(**keys)}),
+                    catalog({"glm-5.3-flash-free": model()}), config(),
+                )
+                self.assertEqual(events, [], line)
+
+    def test_a_numbered_heading_in_the_live_block_adds_no_key(self):
+        """The reviewer's reproduction, through the real opencode_policy_text()."""
+        with offline():
+            _url, clean = watch.opencode_policy_text()
+            self.assertTrue(clean)
+            self.assertEqual(len(clean), 3)
+            for line in self.NUMBERED_VERSION_LABELS:
+                with self.subTest(line=line):
+                    page = DOC_PAGE.replace(
+                        "<li>" + BEAM_PROSE, "<p>%s</p><li>%s" % (line, BEAM_PROSE))
+                    with offline({watch.OPENCODE_DOCS[0]: page}):
+                        _url2, prose = watch.opencode_policy_text()
+                    self.assertEqual(sorted(prose), sorted(clean), line)
+
+    def test_a_real_model_name_survives_the_same_rule_on_both_routes(self):
+        """The other direction: the fix must not close a genuine entry.
+
+        A versioned or plain-worded real name is accepted because the run knows
+        it, and a name the run has not seen yet is accepted only when a token
+        carries an internal capital - never because it contains a number.
+        """
+        known = {"glm-5-3-flash-free", "jev-1-13-free", "jev-1-13", "beam-free"}
+        for line, key in (
+            ("GLM-5.3-Flash Free: Prompts are retained for 30 days.", "glm-5-3-flash-free"),
+            ("Jev 1.13: Prompts are retained for 30 days.", "jev-1-13"),
+            ("Beam Free: Prompts and other inputs are retained for 30 days.", "beam-free"),
+            ("Jev 1.13 Free is available on OpenCode for a limited time.", "jev-1-13-free"),
+            ("MiniMax M2 Free is free on OpenCode for a limited time.", "minimax-m2-free"),
+        ):
+            with self.subTest(line=line):
+                self.assertIn(key, watch.extract_policy([line], known=known))
+        self.assertEqual(
+            set(watch.extract_policy(
+                ["MiniMax M2 Free is free on OpenCode for a limited time."])),
+            {"minimax-m2-free"})
+
+    def test_the_real_page_entries_all_survive_the_stricter_rule(self):
+        """Nothing is lost: every real entry on the fixture page still keys.
+
+        The live-page counterpart (all twelve entries) is measured against the
+        fetched page in the project's verify script, because a test may not
+        reach the network.
+        """
+        with offline():
+            _url, prose = watch.opencode_policy_text()
+        self.assertEqual(sorted(prose), [
+            "beam-free", "flint-40b-free", "glm-5-3-flash-free",
+        ])
+
 
 
 # ------------------------------------------------------------------ identity

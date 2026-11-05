@@ -215,25 +215,40 @@ NON_NAME_WORDS = frozenset(
 
 ENTRY_VERBS = r"\b(?:is|are|has|was|were|now)\b"
 
-# A token that is distinctive by shape: a version marker, a dotted version or
-# an internal capital. Ordinary words carry none of them, which is what keeps
-# section prose ("Update", "Retention", "Retention Free") out of the key space.
-# A hyphen alone is NOT distinctive: "Retention Free-tier" is a section label,
-# and every real name on the page that needs a hyphen also carries a digit.
-_NAME_DISTINCTIVE = re.compile(r"[0-9]|[.]|(?<=[a-z])[A-Z]")
-
-# The subset of a distinctive token that reads as part of a NAME rather than as a
-# section number: a dotted version ("5.3", "1.13") or an internal capital
-# ("MiniMax"). A bare integer, a year or an ordinal prefix ("Q1", "v2", "2025")
-# is how headings are numbered, not how models are named.
-_VERSION_SHAPE = re.compile(r"[.]|(?<=[a-z])[A-Z]")
+# THE ONE RULE for a head that is accepted on its shape (AC-13). A token reads
+# as part of a NAME when it joins a capital onto a preceding lower-case letter
+# ("MiniMax", "DeepSeek"), which is how product names are written and how
+# headings are not. Numbers do NOT qualify: a digit, a dotted version or a year
+# ("3.1", "4.2", "v1.2", "2026.11") is how a page numbers its own headings.
+#
+# This replaced several successive shape exceptions - any digit, then any dotted
+# version, then "version but not a bare year" - each of which closed the heading
+# that had been demonstrated and admitted the next one (rounds 9, 10, 11, 12).
+# A head that carries no internal capital is still accepted when the run already
+# knows it as a model identity, so a plain-worded or versioned real name is not
+# lost (the catalog, the free list and the previous snapshot are that evidence).
+_NAME_CAPITAL = re.compile(r"(?<=[a-z])[A-Z]")
 
 
 def known_identity(phrase, known):
-    """True when `phrase` is an identity the run already knows as a model."""
+    """True when `phrase` is an identity the run already knows as a model.
+
+    The free-models section appends an availability word to the name the model
+    carries elsewhere ("Jev 1.13 Free" in the free list, "Jev 1.13" as the
+    entry's own head), so a known id is also matched with that word removed.
+    Still pure corroboration: the match can only come from an identity this run
+    already holds, never from a word list.
+    """
     if not known or not phrase:
         return False
-    return slug(phrase) in known or normalise(phrase) in known
+    candidates = {slug(phrase), normalise(phrase)}
+    expanded = set(candidates)
+    for candidate in candidates:
+        for suffix in ("-free-tier", "-free"):
+            if candidate.endswith(suffix):
+                expanded.add(candidate[: -len(suffix)])
+    return bool(expanded & known) or bool(
+        {c + "-free" for c in expanded} & known)
 
 
 # The grammatical boundary between a SUBJECT and the claim made about it. A
@@ -288,15 +303,21 @@ def looks_like_model_name(phrase, labelled=False, known=None, subject=False):
     the model "update" and fired a retention alert naming a model the source
     never states (MW-EXTRACTOR-ADMITS-SECTION-PROSE, AC-13/AC-25).
 
-    The rule is structural in both directions and needs no vocabulary: a head
-    is a model only when some token in it is distinctive by shape (a digit, a
-    dotted version, an internal capital) or the run already knows the phrase as
-    a model identity (the catalog, the free list or the previous snapshot).
-    Shape alone could not separate "Pulse Alpha Free" from "Retention Free"
-    - both are plain capitalised words - so the corroboration half is what
-    decides, and it comes from data the run already holds rather than from a
-    list of words to reject. Continuity is safe because the previous snapshot
-    is part of that data, so a model already tracked never stops being known.
+    The rule is ONE structural test in both directions and needs no vocabulary:
+    a head is a model when the run already knows the phrase as a model identity
+    (the catalog, the free list or the previous snapshot), or when some token in
+    it carries an internal capital. Nothing else qualifies. Identity data is
+    what lets a plain-worded or versioned real name ("Beam Free", "Jev 1.13")
+    survive; the internal capital is what accepts a name the run has not seen
+    yet ("MiniMax M2", "DeepSeek V5") without also accepting a heading.
+    Continuity is safe because the previous snapshot is part of that data, so a
+    model already tracked never stops being known.
+
+    A digit, a dotted version and a year are all excluded on purpose. Each was
+    tried as the shape that separates a name from a heading, and each admitted
+    the next heading shape: "Section 3:" then "3.1 Retention terms:" then
+    "Changelog v1.2:" (MW-EXTRACTOR-LABEL-VERSION-ROUTE, rounds 9-12). A number
+    is how a page numbers its headings, so it cannot be what marks a name.
     """
     phrase = phrase.strip().strip(".,;:")
     if not phrase or len(phrase) > 60:
@@ -312,36 +333,33 @@ def looks_like_model_name(phrase, labelled=False, known=None, subject=False):
         return False
     # The head ran on into the sentence's real subject ("Retention Policy
     # Prompts are retained ..."), so the reader's data is the subject and the
-    # line states a posture, not a model. Judged BEFORE the shape shortcut: a
+    # line states a posture, not a model. Judged BEFORE the accept routes: a
     # numbered heading ("Section 3 Requests are retained ...") carries a digit,
-    # so the shortcut let it through on the very vocabulary the rule already
-    # treats as not-a-name. Only the LAST token counts: a real name may carry
-    # one of these words mid-name ("Log Runner Free"), never as its subject.
+    # so a digit-based route let it through on the very vocabulary this rule
+    # already treats as not-a-name. Only the LAST token counts: a real name may
+    # carry one of these words mid-name ("Log Runner Free"), never as its
+    # subject.
     if tokens[-1].lower().strip("'\u2019s") in _DATA_SUBJECTS:
         return False
-    if any(_NAME_DISTINCTIVE.search(t) for t in tokens):
-        # A LABEL is held to a stricter shape. "Section 3:", "Changelog 2025:"
-        # and "Table 2:" all carry a digit, so the digit alone let a numbered
-        # section heading key as a model and fire a retention alert naming
-        # something the source never states (AC-13/AC-25) - the same defect the
-        # plain-word rule closed, on the remaining accept route. A version
-        # marker that is part of a NAME ("GLM-5.3-Flash", "Jev 1.13") is a
-        # dotted version or an internal capital; a bare ordinal or a year is not.
-        if not labelled or any(_VERSION_SHAPE.search(t) for t in tokens):
-            return True
+    # Both routes, one rule: a known identity, or an internal capital. Applied
+    # identically to a colon label and to a name followed by its own clause, so
+    # a heading shape cannot survive on the route the last fix did not touch.
     if known_identity(phrase, known):
+        return True
+    if any(_NAME_CAPITAL.search(t) for t in tokens):
         return True
     # The head ran on into the sentence's real subject ("Retention Policy
     # Prompts are retained ..."), so the subject is the reader's data and the
-    # line states a posture, not a model. Checked after the shape and identity
-    # tests so a real model whose name happens to carry one of these words is
-    # still kept.
+    # line states a posture, not a model. Unreachable after the last-token veto
+    # above for every shape measured, and kept so a later relaxation of that
+    # veto cannot silently reintroduce the defect.
     if any(t.lower().strip("'\u2019s") in _DATA_SUBJECTS for t in tokens):
         return False
-    # A plain-worded head is a model only when the line makes it the subject of
-    # its own clause. A colon label is never corroborated that way: a section
-    # label and a real entry share the colon shape, so a label must be
-    # distinctive or already known.
+    # Neither of those accepted the phrase. A plain-worded head can still be a
+    # real name the run has not seen yet ("North Mini Code Free"), so it is kept
+    # only when the line makes it the subject of its own clause. A colon label
+    # cannot use this route: a heading and an entry share the colon shape, so
+    # the label form must be corroborated by identity or an internal capital.
     if labelled or len(tokens) == 1:
         return False
     return bool(subject)
