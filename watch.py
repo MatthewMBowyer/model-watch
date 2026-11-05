@@ -191,19 +191,18 @@ def free_ids(pid, models):
 # blacklist of today's junk strings: it rejects an empty fragment, a bare
 # cross-reference, a heading, an instruction to the reader and an env var,
 # because none of them names a model and asserts a statement.
-ASSERTION_MARKERS = (
-    "free on opencode",
-    "available on opencode",
-    "zero-retention",
-    "zero retention",
-    "retains it for",
-    "retains them for",
-    "does not use your data",
-    "for model training",
-    "collect feedback",
-    "improve the model",
-    "logged",
-)
+# The assertion is judged by SHAPE, not by a list of today's sentences: a line
+# is an entry when it opens with a model name and asserts something ABOUT that
+# model - a privacy posture, or that it is free/available. A phrase allowlist
+# dropped a real entry whose free clause was merely reworded ("is free on
+# OpenCode for a limited time" -> "Free to use on OpenCode for a limited time")
+# and every entry whose prose opened without a copula, which turned a rewording
+# into a false "no longer described" alert.
+_MODEL_PREDICATE = re.compile(
+    r"\b(?:is|are|was|were|be|'s|\u2019s)\s+(?:\w+\s+){0,3}free\b"          # is free, is a stealth model that's free
+    r"|\bfree\s+to\s+(?:use|try)\b"                                            # Free to use
+    r"|\bfree\s+(?:on|for)\s+(?:opencode|a\s+limited\s+time)\b"               # free on OpenCode
+    r"|\b(?:is|are|was)\s+(?:\w+\s+){0,2}(?:available|offered)\b")            # is available on OpenCode
 
 # Words that open an instruction or a fragment, never a model name.
 NON_NAME_WORDS = frozenset(
@@ -234,27 +233,58 @@ def looks_like_model_name(phrase):
     return any(re.search(r"[A-Z0-9.]", t) for t in tokens)
 
 
+def policy_head(line):
+    """The model name a policy line opens with.
+
+    Taken from the FIRST SENTENCE, not from the whole line: a page may state the
+    model and then start a new sentence ("GLM-5.3-Flash Free. Free to use on
+    OpenCode for a limited time."), and splitting only on a copula made that
+    head the entire line, which no longer looked like a name. The entry was
+    then dropped, and the next run reported the model as "no longer described"
+    while the page still said it verbatim.
+    """
+    first = re.split(r"(?<=[.!?])\s+", " ".join(line.split()), maxsplit=1)[0]
+    head = re.split(ENTRY_VERBS, first, maxsplit=1)[0]
+    return head.strip().strip(".,;:")
+
+
+def asserts_about_model(line):
+    """True when `line` makes a claim about the model it names."""
+    return is_retention_sentence(line) or bool(_MODEL_PREDICATE.search(line.lower()))
+
+
 def is_policy_entry(line):
     line = " ".join(line.split())
-    if len(line) < 30:
+    if len(line) < 20:
         return False
-    low = line.lower()
-    if not any(marker in low for marker in ASSERTION_MARKERS):
+    if not looks_like_model_name(policy_head(line)):
         return False
-    head = re.split(ENTRY_VERBS, line, maxsplit=1)[0]
-    return looks_like_model_name(head)
+    return asserts_about_model(line)
 
 
 def extract_policy(lines):
-    """slug -> prose, for every line that is a real model statement."""
+    """slug -> prose, for every line that is a real model statement.
+
+    A statement can wrap: a page that puts the model name on one line and its
+    prose on the next is joined, so a real entry is not lost to line breaking.
+    The continuation must itself assert something and must not open with
+    another model name, so furniture cannot be glued onto an entry.
+    """
     policies = {}
-    for line in lines:
-        if not is_policy_entry(line):
+    lines = [" ".join(l.split()) for l in lines]
+    for i, line in enumerate(lines):
+        if not line:
             continue
-        head = re.split(ENTRY_VERBS, line, maxsplit=1)[0].strip()
-        key = slug(head)
+        text = line
+        if not asserts_about_model(text) and looks_like_model_name(policy_head(text)):
+            nxt = next((l for l in lines[i + 1:] if l), "")
+            if nxt and not looks_like_model_name(policy_head(nxt)) and asserts_about_model(nxt):
+                text = "%s %s" % (text, nxt)
+        if not is_policy_entry(text):
+            continue
+        key = slug(policy_head(text))
         if key:
-            policies[key] = " ".join(line.split())
+            policies[key] = text
     return policies
 
 
@@ -561,23 +591,26 @@ def policy_name(text, fallback):
 # own - is what made "Try it free for 7 days" and "Log in to see your usage"
 # read as retention alerts. Requiring the act AND its object is the rule that
 # excludes page furniture without a blacklist of today's junk strings.
-_DATA_NOUN = (r"(?:data|inputs?|prompts?|content|requests?|conversations?|messages?|"
+_DATA_NOUN = (r"\b(?:data|inputs?|prompts?|content|requests?|conversations?|messages?|"
               r"queries|query|uploads?|submissions?|chats?|chat\s+logs?|"
               r"personal\s+information|personal\s+data|training\s+data)")
 DATA_OBJECT = (r"(?:(?:your|their|the|any|all|this|that|such|"
                r"user'?s?|users'|customer'?s?|person'?s?|reader'?s?)\s+)?"
                + _DATA_NOUN)
+# Every alternative is word-bounded. Without the trailing boundary "provide"
+# matched inside the NOUN "provider", so "This provider supports prompt caching"
+# read as a disclosure act applied to your data and fired a retention alert.
 _RETENTION_ACT = (
-    r"(?:retain(?:s|ed|ing)?|keeps?|kept|keeping|stores?|stored|storing|holds?|"
-    r"held|holding|logs?|logged|logging|archiv(?:e|es|ed|ing)|record(?:s|ed|ing)?|"
-    r"sav(?:e|es|ed|ing)|persist(?:s|ed|ing)?|delet(?:e|es|ed|ing)|"
-    r"wip(?:e|es|ed|ing)|eras(?:e|es|ed|ing)|purg(?:e|es|ed|ing)|"
-    r"remov(?:e|es|ed|ing)|discard(?:s|ed|ing)?)")
-_TRAIN_ACT = (r"(?:train(?:s|ed|ing)?|learn(?:s|ed|ing)?|improv(?:e|es|ed|ing)|"
-              r"collect(?:s|ed|ing)?\s+feedback)")
-_DISCLOSURE_ACT = (r"(?:disclos(?:e|es|ed|ing)|shar(?:e|es|ed|ing)|sell|sold|"
-                   r"transfer(?:s|red|ring)?|provid(?:e|es|ed|ing)|"
-                   r"hand(?:s|ed)?\s+over|giv(?:e|es|ing)|given)")
+    r"(?:\bretain(?:s|ed|ing)?|\bkeeps?|\bkept|\bkeeping|\bstores?|\bstored|\bstoring|"
+    r"\bholds?|\bheld|\bholding|\blogs?|\blogged|\blogging|\barchiv(?:e|es|ed|ing)|"
+    r"\brecord(?:s|ed|ing)?|\bsav(?:e|es|ed|ing)|\bpersist(?:s|ed|ing)?|\bdelet(?:e|es|ed|ing)|"
+    r"\bwip(?:e|es|ed|ing)|\beras(?:e|es|ed|ing)|\bpurg(?:e|es|ed|ing)|"
+    r"\bremov(?:e|es|ed|ing)|\bdiscard(?:s|ed|ing)?)\b")
+_TRAIN_ACT = (r"(?:\btrain(?:s|ed|ing)?|\blearn(?:s|ed|ing)?|\bimprov(?:e|es|ed|ing)|"
+              r"\bcollect(?:s|ed|ing)?\s+feedback)")
+_DISCLOSURE_ACT = (r"(?:\bdisclos(?:e|es|ed|ing)|\bshar(?:e|es|ed|ing)|\bsell\b|\bsold\b|"
+                   r"\btransfer(?:s|red|ring)?|\bprovid(?:e|es|ed|ing)|"
+                   r"\bhand(?:s|ed)?\s+over|\bgiv(?:e|es|ing)|\bgiven)\b")
 _LEGAL_OBJECT = (r"(?:law\s+enforcement|subpoena|legal\s+(?:request|process|order)|"
                  r"court\s+order|third[\s-]part(?:y|ies)|partners?|affiliat(?:e|es)|"
                  r"regulators?)")

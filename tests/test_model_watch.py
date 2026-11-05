@@ -856,6 +856,62 @@ class StructuralPrivacyRuleTests(unittest.TestCase):
         for sentence in no:
             self.assertFalse(watch.is_retention_sentence(sentence), sentence)
 
+    # The noun "provider" is not the verb "provide". The disclosure pattern
+    # carried no trailing word boundary, so "provid(?:e|es|ed|ing)" matched
+    # inside "provider" and every ordinary note about a provider read as a
+    # disclosure act applied to the reader's data.
+    PROVIDER_NOTES = (
+        "This provider supports prompt caching.",
+        "Requests are sent to the fastest available provider.",
+        "The provider may rate limit requests.",
+        "Requests are served by the nearest provider.",
+        "The provider returns one response per request.",
+        "The provider is available in three regions.",
+        "The provider supports streaming responses.",
+        "Prompts are tokenised before they reach the provider.",
+        "The provider charges nothing for these models.",
+        "This provider requires an account.",
+        "Usage is metered per request by the provider.",
+        "The provider offers a 200k context window.",
+        "Responses are cached by the provider for speed.",
+        "The provider is reachable over HTTPS only.",
+        "Every request is routed to a provider.",
+        "The provider rotates its endpoints weekly.",
+        "Prompts may contain images, which the provider rejects.",
+        "The provider lists these models as experimental.",
+        "Your prompts are compiled before the provider sees them.",
+        "The provider publishes its status on a separate page.",
+    )
+
+    def test_the_noun_provider_is_not_a_disclosure_act(self):
+        """MW-RETENTION-RULE-PROVIDER-SUBSTRING: no alert from page churn."""
+        for note in self.PROVIDER_NOTES:
+            with self.subTest(note=note):
+                self.assertFalse(watch.is_retention_sentence(note), note)
+
+    def test_a_provider_note_appended_to_a_live_line_is_silent(self):
+        """The consequence the reviewer measured, on a real retained model line."""
+        base = ("GLM-5.3-Flash Free is free on OpenCode for a limited time. "
+                "Its provider retains your data for 30 days for safety reasons.")
+        for note in self.PROVIDER_NOTES:
+            with self.subTest(note=note):
+                events = watch.diff(
+                    state(policy={"opencode": policy_map(**{"beam-free": base})}),
+                    state(policy={"opencode": policy_map(**{"beam-free": base + " " + note})}),
+                    catalog({}), config(),
+                )
+                self.assertEqual(events, [], note)
+
+    def test_real_disclosure_verbs_still_fire(self):
+        """Word-bounding the acts must not silence the acts themselves."""
+        for sentence in ("We share your prompts with partners.",
+                         "We provide your data to third parties.",
+                         "It transfers your data to affiliates.",
+                         "We sold your data last year.",
+                         "It discloses your conversations to law enforcement."):
+            with self.subTest(sentence=sentence):
+                self.assertTrue(watch.is_retention_sentence(sentence), sentence)
+
     def test_territory_list_edit_is_silent(self):
         """The country list is the page's most churn-prone copy and states nothing."""
         before = BEAM_PROSE + (" It is not available in Angola, Belarus, Cambodia "
@@ -1019,6 +1075,56 @@ class JunkKeyTests(unittest.TestCase):
         keys = set(_snap["policy"]["opencode"])
         self.assertEqual(keys, {"glm-5-3-flash-free", "beam-free", "flint-40b-free"})
         self.assertNotIn("openrouter", " ".join(seen))
+
+    def test_free_clause_rewording_never_drops_a_real_entry(self):
+        """MW-EXTRACTOR-PHRASE-WHITELIST-TO-FALSE-REMOVAL.
+
+        A literal phrase allowlist admitted only the exact free clauses on the
+        page today. Rewording the opener alone left the retention sentence
+        untouched but dropped the entry, and the next run then reported the
+        model as "no longer described" while the page still said it verbatim.
+        """
+        tail = " Its provider retains your data for 30 days for safety reasons."
+        openers = (
+            "GLM-5.3-Flash Free is free on OpenCode for a limited time.",
+            "GLM-5.3-Flash Free. Free to use on OpenCode for a limited time.",
+            "GLM-5.3-Flash Free is free to use on OpenCode for a limited time.",
+            "GLM-5.3-Flash Free is available on OpenCode at no cost for a limited time.",
+            "GLM-5.3-Flash Free is offered free of charge on OpenCode for a limited time.",
+            "GLM-5.3-Flash Free is free on OpenCode for a short while.",
+            "GLM-5.3-Flash Free is currently free on OpenCode for a limited time.",
+            "Foo Free. Its provider retains your data for 30 days.",
+        )
+        for opener in openers:
+            with self.subTest(opener=opener):
+                got = watch.extract_policy([opener + tail])
+                self.assertEqual(len(got), 1, opener)
+                self.assertIn("retains your data for 30 days", list(got.values())[0])
+
+    def test_reworded_free_clause_does_not_read_as_removed(self):
+        """The consequence, not just the extraction: no false 'removed' alert."""
+        old = "GLM-5.3-Flash Free is free on OpenCode for a limited time." \
+              " Its provider retains your data for 30 days for safety reasons."
+        new = "GLM-5.3-Flash Free. Free to use on OpenCode for a limited time." \
+              " Its provider retains your data for 30 days for safety reasons."
+        before, after = watch.extract_policy([old]), watch.extract_policy([new])
+        self.assertEqual(set(before), set(after))
+        self.assertEqual("retained-30d", watch.classify(list(after.values())[0]))
+        events = watch.diff(
+            state(free={"opencode": ["glm-5-3-flash-free"]},
+                  policy={"opencode": policy_map(**before)}),
+            state(free={"opencode": ["glm-5-3-flash-free"]},
+                  policy={"opencode": policy_map(**after)}),
+            catalog({"glm-5.3-flash-free": model()}), config(),
+        )
+        self.assertEqual(events, [])
+
+    def test_entry_split_across_lines_is_joined(self):
+        """A name on one line and its prose on the next is one entry."""
+        got = watch.extract_policy([
+            "North Mini Code Free", "is free on OpenCode for a limited time.",
+        ])
+        self.assertEqual(set(got), {"north-mini-code-free"})
 
 
 # ------------------------------------------------------------------ identity
