@@ -1500,14 +1500,23 @@ class JunkKeyTests(unittest.TestCase):
                     self.assertEqual(sorted(prose), sorted(clean), line)
 
     def test_the_provider_refusal_does_not_close_a_real_name(self):
-        """The other direction: a model whose name holds a provider word is kept."""
+        """The other direction: a model whose name holds a provider word is kept.
+
+        A head that OPENS with a provider's name is refused by shape, because
+        that is also how the page opens a section about the provider itself
+        ("OpenCode Console provides a list of models ..."). Identity is judged
+        first, so a real model whose name begins with the provider word is kept
+        as soon as the catalogue or the previous snapshot knows it - which is
+        the only evidence that such a head is a model rather than a heading.
+        """
         for line, key in (
             ("OpenCode Zen Free: Prompts are retained for 30 days.", "opencode-zen-free"),
             ("OpenRouter Auto Free is free on OpenCode for a limited time.",
              "openrouter-auto-free"),
         ):
             with self.subTest(line=line):
-                self.assertIn(key, watch.extract_policy([line]))
+                self.assertIn(key, watch.extract_policy([line], known={key}))
+                self.assertEqual(watch.extract_policy([line]), {}, line)
 
 
     def test_a_real_model_name_survives_the_same_rule_on_both_routes(self):
@@ -1544,6 +1553,81 @@ class JunkKeyTests(unittest.TestCase):
         self.assertEqual(sorted(prose), [
             "beam-free", "flint-40b-free", "glm-5-3-flash-free",
         ])
+
+    # MW-EXTRACTOR-SUBJECT-ROUTE-ADMITS-COLLECTIVE-PROSE. The round-12 rule made
+    # a known identity or an internal capital the ONLY corroboration on a colon
+    # label, but left the name-followed-by-its-own-clause route returning
+    # `bool(subject)`. Subject position is not identity: a page writes "All
+    # models are free ...", "Each model is free ..." and "OpenCode Console
+    # provides a list of models ..." with the group, not a model, as subject.
+    COLLECTIVE_HEADS = (
+        "All models are free to use on OpenCode for a limited time. "
+        "Data is retained for 30 days.",
+        "Some models are free to use on OpenCode for a limited time. "
+        "Data is retained for 30 days.",
+        "Each model is free to use on OpenCode for a limited time. "
+        "Data is retained for 30 days.",
+        "Every model is free to use on OpenCode for a limited time. "
+        "Data is retained for 30 days.",
+        "Any model is free to use on OpenCode for a limited time. "
+        "Data is retained for 30 days.",
+        "Most models are free to use on OpenCode for a limited time. "
+        "Data is retained for 30 days.",
+        "Many models are free to use on OpenCode for a limited time. "
+        "Data is retained for 30 days.",
+        "All free models on this page are free to use on OpenCode for a "
+        "limited time.",
+        "OpenCode Console: Prompts are retained for 30 days.",
+        "OpenCode Go: Prompts are retained for 30 days.",
+        "OpenCode Console provides a list of models tested and verified by the "
+        "OpenCode team.",
+    )
+
+    def test_collective_prose_never_becomes_a_policy_key(self):
+        """A determiner or a provider name opens a group, never a model."""
+        known = {"beam-free", "glm-5-3-flash-free"}
+        for line in self.COLLECTIVE_HEADS:
+            with self.subTest(line=line):
+                self.assertEqual(watch.extract_policy([line], known=known), {}, line)
+                self.assertEqual(watch.extract_policy([line]), {}, line)
+
+    def test_collective_prose_alerts_nothing_against_a_seeded_baseline(self):
+        """AC-25: no alert may name "All models" as a model the page states."""
+        before = state(free={"opencode": ["glm-5-3-flash-free"]},
+                       policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
+        for line in self.COLLECTIVE_HEADS:
+            with self.subTest(line=line):
+                keys = watch.extract_policy([GLM_PROSE, line])
+                self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
+                self.assertEqual(watch.diff(
+                    before,
+                    state(free={"opencode": ["glm-5-3-flash-free"]},
+                          policy={"opencode": policy_map(**keys)}),
+                    catalog({"glm-5.3-flash-free": model()}), config()), [], line)
+
+    def test_collective_prose_in_the_live_page_adds_no_key(self):
+        """The same shapes through the real opencode_policy_text()."""
+        with offline():
+            _url, clean = watch.opencode_policy_text()
+            self.assertTrue(clean)
+            for line in self.COLLECTIVE_HEADS:
+                with self.subTest(line=line):
+                    page = DOC_PAGE.replace(
+                        "<li>" + BEAM_PROSE, "<p>%s</p><li>%s" % (line, BEAM_PROSE))
+                    with offline({watch.OPENCODE_DOCS[0]: page}):
+                        _url2, prose = watch.opencode_policy_text()
+                    self.assertEqual(sorted(prose), sorted(clean), line)
+
+    def test_a_plain_worded_new_name_is_still_admitted_on_the_subject_route(self):
+        """The other direction: the stricter route still admits a real new name."""
+        for line, key in (
+            ("North Mini Code Free is free on OpenCode for a limited time.",
+             "north-mini-code-free"),
+            ("MiniMax M2 Free is free on OpenCode for a limited time.",
+             "minimax-m2-free"),
+        ):
+            with self.subTest(line=line):
+                self.assertEqual(set(watch.extract_policy([line])), {key})
 
 
 
@@ -2010,12 +2094,22 @@ class BackgroundFreeModelTests(unittest.TestCase):
         self.assertIn("does not read a section heading as a model", doc)
         self.assertIn("a number is not a model name", doc)
         self.assertIn("Nor is the provider's own name a model", doc)
+        self.assertIn("Nor is a heading that merely starts with the provider's name", doc)
+        self.assertIn("Nor is a sentence that talks about the whole catalogue", doc)
         seeded = state(free={"opencode": ["glm-5-3-flash-free"]},
                        policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
         for line in ("3.1 Retention terms: requests are retained for 30 days.",
                      "Section 4.2: data is retained for 30 days.",
                      "Changelog v1.2: requests are logged for 30 days.",
-                     "OpenCode: Prompts are retained for 30 days."):
+                     "OpenCode: Prompts are retained for 30 days.",
+                     "OpenCode Console: Prompts are retained for 30 days.",
+                     "OpenCode Go provides a subscription with included usage.",
+                     "All models are free to use on OpenCode for a limited time. "
+                     "Data is retained for 30 days.",
+                     "Each model is free to use on OpenCode for a limited time. "
+                     "Data is retained for 30 days.",
+                     "All free models on this page are free to use on OpenCode "
+                     "for a limited time."):
             with self.subTest(line=line):
                 keys = watch.extract_policy([GLM_PROSE, line])
                 self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)

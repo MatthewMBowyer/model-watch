@@ -124,7 +124,11 @@ means a quiet day, not a broken tool.
 - It does not read a section heading as a model. Provider pages number their
   headings - "3.1 Retention terms:", "Section 4.2:", "Changelog v1.2:" - and a
   number is not a model name. Nor is the provider's own name a model: a heading
-  such as "OpenCode:" is a label, not an entry. An entry on the data page is only
+  such as "OpenCode:" is a label, not an entry. Nor is a heading that merely
+  starts with the provider's name, such as "OpenCode Console" or "OpenCode Go".
+  Nor is a sentence that talks about the whole catalogue - "All models are
+  free", "Each model is free", "All free models on this page" - because a
+  determiner opens a group, never a name. An entry on the data page is only
   taken as a model when the model catalogue already lists it, or when its name is
   written the way product names are written (a capital inside a word, as in
   "DeepSeek" or "MiniMax"). The trade is deliberate: you may occasionally read

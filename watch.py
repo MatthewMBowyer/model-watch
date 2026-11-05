@@ -350,19 +350,26 @@ def looks_like_model_name(phrase, labelled=False, known=None, subject=False):
     # subject.
     if tokens[-1].lower().strip("'\u2019s") in _DATA_SUBJECTS:
         return False
+    # Both routes, one rule: a known identity, or an internal capital. Applied
+    # identically to a colon label and to a name followed by its own clause, so
+    # a heading shape cannot survive on the route the last fix did not touch.
+    # Identity is judged BEFORE the provider veto because it is the only
+    # evidence that a phrase the shape rules dislike is nevertheless a model.
+    if known_identity(phrase, known):
+        return True
     # A provider's own name is never one of its models. "OpenCode: Prompts are
     # retained for 30 days." is a section label, and it satisfied the internal
     # capital that accepts a new name, so it keyed as a model called OpenCode
     # and would fire a retention alert naming something the page never states
-    # (AC-13/AC-25). The identities come from PROVIDER_LABEL - this run's own
-    # providers - so no heading word is written down here.
-    if slug(phrase) in _PROVIDER_IDENTITIES:
+    # (AC-13/AC-25). The same name also opens page SECTIONS - "OpenCode Console
+    # provides a list of models ...", "OpenCode Go provides a subscription ..."
+    # - and every one of those carries the provider's own internal capital, so
+    # the veto has to cover a head that OPENS with a provider, not only a head
+    # that IS one. The identities come from PROVIDER_LABEL - this run's own
+    # providers - so no heading word is written down here, and a real model that
+    # opens with the provider word is still kept once the run knows it.
+    if slug(tokens[0]) in _PROVIDER_IDENTITIES:
         return False
-    # Both routes, one rule: a known identity, or an internal capital. Applied
-    # identically to a colon label and to a name followed by its own clause, so
-    # a heading shape cannot survive on the route the last fix did not touch.
-    if known_identity(phrase, known):
-        return True
     if any(_NAME_CAPITAL.search(t) for t in tokens):
         return True
     # The head ran on into the sentence's real subject ("Retention Policy
@@ -374,10 +381,24 @@ def looks_like_model_name(phrase, labelled=False, known=None, subject=False):
         return False
     # Neither of those accepted the phrase. A plain-worded head can still be a
     # real name the run has not seen yet ("North Mini Code Free"), so it is kept
-    # only when the line makes it the subject of its own clause. A colon label
-    # cannot use this route: a heading and an entry share the colon shape, so
-    # the label form must be corroborated by identity or an internal capital.
+    # only when it is SHAPED like a proper name AND the line makes it the
+    # subject of its own clause. A colon label cannot use this route: a heading
+    # and an entry share the colon shape, so the label form must be corroborated
+    # by identity or an internal capital.
     if labelled or len(tokens) == 1:
+        return False
+    # A determiner opens a noun phrase about the page's whole catalogue - "All
+    # models", "Some models", "Each model", "All free models on this page" -
+    # never a name, and the head reader already skips them for that reason.
+    # Without this the subject test alone admitted every one of them, and each
+    # fired a retention alert naming a model the source never states
+    # (AC-13/AC-25).
+    if tokens[0].lower() in _DETERMINERS:
+        return False
+    # Every word of a proper name is a name word. Prose is not: "free", "models",
+    # "on this page" are ordinary lower-case words, and any one of them means the
+    # head ran on into the sentence instead of naming something.
+    if not all(_name_token(t) for t in tokens):
         return False
     return bool(subject)
 
