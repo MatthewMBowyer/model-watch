@@ -1541,6 +1541,15 @@ class BackgroundFreeModelTests(unittest.TestCase):
             )
             self.assertEqual(events, [], sentence)
 
+    def test_owner_summary_says_naming_the_provider_is_not_a_disclosure(self):
+        """The round-7 fix is a distinction the owner has to be told about."""
+        doc = self._owner_summary()
+        self.assertIn("Naming the provider is not a privacy statement", doc)
+        note = "The provider supports prompt caching."
+        self.assertIn(note.strip(".").lower(), " ".join(doc.lower().split()))
+        self.assertFalse(watch.is_retention_sentence(note))
+        self.assertTrue(watch.is_retention_sentence("We provide your data to third parties."))
+
     def test_owner_summary_no_longer_promises_group_c_is_silent(self):
         doc = self._owner_summary()
         self.assertNotIn("never wakes your phone on its own", doc)

@@ -107,7 +107,8 @@ means a quiet day, not a broken tool.
   it names what happens to your data - keeps your prompts for 30 days, logs your
   requests, deletes your inputs after 7 days - so a reworded promise alerts even
   when its meaning is unchanged, and a price or model-list change alerts as it
-  always did.
+  always did. Naming the provider is not a privacy statement: "the provider
+  supports prompt caching" says nothing about your data and stays silent.
 - It does not treat a broken fetch as news. If the provider's page is down, the
   tool records "could not check" and stays quiet. It will never tell you that
   every model disappeared just because a page failed to load.
