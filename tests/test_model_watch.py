@@ -780,6 +780,146 @@ class RetentionWordingTests(unittest.TestCase):
         self.assertIn("Now it keeps no copy of your data", text)
 
 
+class StructuralPrivacyRuleTests(unittest.TestCase):
+    """MW-PROSE-DIFF-ABOVE-TERMS / MW-RETENTION-ALERT-FALSE-CLAIM.
+
+    The reviewer measured that the shipped prose diff was a keyword list: any
+    sentence containing "day", "keep", "log", "share" or "transfer" counted as a
+    retention statement, so appended marketing copy fired
+    "A provider changed its data-retention wording". These fixtures are that
+    probe, plus the structural rule that replaces it.
+    """
+
+    # The reviewer's seven measured false positives, verbatim.
+    CHURN = (
+        "Try it free for 7 days.",
+        "Share this model with a friend.",
+        "Keep an eye on this page for updates.",
+        "Log in to see your usage.",
+        "Log in to see more.",
+        "Availability is announced on the blog.",
+        "Scroll down for the full list of days and times.",
+    )
+
+    def test_no_appended_marketing_sentence_fires_a_retention_alert(self):
+        for sentence in self.CHURN:
+            with self.subTest(sentence=sentence):
+                self.assertFalse(watch.is_retention_sentence(sentence))
+                edited = GLM_PROSE + " " + sentence
+                events = watch.diff(
+                    state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})}),
+                    state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": edited})}),
+                    catalog({}), config(),
+                )
+                self.assertEqual(events, [])
+
+    def test_retention_sentence_needs_the_act_and_its_object(self):
+        """The general rule, stated: an act applied to the reader's data."""
+        yes = (
+            "Its provider keeps your prompts for 30 days.",
+            "We log your requests.",
+            "It archives your conversations.",
+            "We may share your inputs with partners.",
+            "It deletes your data after 7 days.",
+            "The provider trains on your prompts.",
+            "Its provider follows a zero-retention policy.",
+            "We do not retain your data.",
+            "The retention period is 30 days.",
+        )
+        no = self.CHURN + (
+            "Models Pricing Docs Blog Careers.",
+            "Contact us if you have any questions.",
+            "OPENCODE_DISABLE_FREE_MODELS=1",
+            "The model is free for a limited time.",
+            "Two new models were added this week.",
+            "Read the documentation before you start.",
+        )
+        for sentence in yes:
+            self.assertTrue(watch.is_retention_sentence(sentence), sentence)
+        for sentence in no:
+            self.assertFalse(watch.is_retention_sentence(sentence), sentence)
+
+    def test_the_junk_strings_are_excluded_by_the_rule_not_a_blacklist(self):
+        """AC-13 in spirit: the exclusion must be structural, not enumerative."""
+        import inspect
+        source = inspect.getsource(watch.is_retention_sentence)
+        for junk in ("see", "free-models", "to-hide-free-models-in-opencode-set",
+                     "opencode-disable-free-models-1"):
+            self.assertNotIn(junk, source)
+        for junk in JunkKeyTests.FURNITURE:
+            self.assertFalse(watch.is_retention_sentence(junk), junk)
+
+    def test_a_marketing_only_edit_never_names_itself_as_the_changed_sentence(self):
+        """AC-25: no claim about his data when the provider made none."""
+        edited = GLM_PROSE + " Try it free for 7 days."
+        self.assertEqual(watch.changed_sentence(GLM_PROSE, edited), "")
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})}),
+            state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": edited})}),
+            catalog({}), config(),
+        )
+        self.assertEqual(events, [])
+        # The class is unchanged either way, so a render of the old event shape
+        # must not carry a "sentence carrying the change" line for marketing.
+        self.assertNotIn("Try it free for 7 days", watch.render([{
+            "kind": "policy_changed", "provider": "opencode",
+            "model": "glm-5-3-flash-free", "watched": True,
+            "class_before": "zero-retention", "class_after": "zero-retention",
+            "class_changed": False, "wording_changed": False,
+            "text_before": GLM_PROSE, "text_after": edited}], config()))
+
+    def test_a_genuine_retention_edit_still_fires_and_quotes_the_new_wording(self):
+        """The fix must not silence the signal it was meant to protect."""
+        edited = GLM_PROSE + " It keeps your prompts for 30 days for safety."
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})}),
+            state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": edited})}),
+            catalog({}), config(),
+        )
+        self.assertEqual(len(events), 1)
+        text = watch.render(events, config())
+        self.assertIn('The sentence carrying the change: "It keeps your prompts for '
+                      '30 days for safety."', text)
+
+    def test_common_qualified_window_phrasings_are_never_unstated(self):
+        """MW-CLASSIFIER-STILL-UNSTATED-ON-COMMON-WINDOWS, each phrase verbatim."""
+        cases = {
+            "It retains prompts for up to 30 days.": "retained-30d",
+            "It keeps prompts for at most 30 days.": "retained-30d",
+            "Its retention period is 30 days.": "retained-30d",
+            "Prompts are purged within 30 days.": "retained-30d",
+            "It keeps prompts for no more than 30 days.": "retained-30d",
+            "It retains prompts for less than 30 days.": "retained-30d",
+            "The provider's retention period is 40 days.": "retained-40d",
+            "Retention window: 2 weeks.": "retained-2w",
+        }
+        for prose, expected in cases.items():
+            self.assertEqual(watch.classify(prose), expected, prose)
+            events = watch.diff(
+                state(policy={"opencode": policy_map(**{"beam-free": GLM_PROSE})}),
+                state(policy={"opencode": policy_map(**{"beam-free": prose})}),
+                catalog({}), config(),
+            )
+            self.assertNotIn("does not say what it does with your data",
+                             watch.render(events, config()), prose)
+
+    def test_logged_class_carrier_is_the_privacy_sentence(self):
+        """MW-LOGGED-CARRIER-WRONG: keys on the prose's own 'logs', not 'logged'."""
+        cases = (
+            "GLM-5.3-Flash Free is free on OpenCode for a limited time. "
+            "Its provider logs your prompts.",
+            "Beam Free is free for a limited time. "
+            "Its provider logs requests for abuse prevention.",
+            "Flint 40B Free is free for a limited time. Its provider archives prompts.",
+        )
+        for prose in cases:
+            with self.subTest(prose=prose):
+                self.assertEqual(watch.classify(prose), "logged")
+                carrier = watch.carrier_sentence(prose, "logged")
+                self.assertNotIn("is free on OpenCode", carrier)
+                self.assertTrue(watch.is_retention_sentence(carrier), carrier)
+
+
 # ------------------------------------------------------------------ junk keys
 
 class JunkKeyTests(unittest.TestCase):
@@ -1222,8 +1362,30 @@ class BackgroundFreeModelTests(unittest.TestCase):
         self.assertIn('"One model you watch is free again: X."', self._owner_summary())
 
     def test_owner_summary_churn_paragraph_matches_the_privacy_sentence_rule(self):
-        self.assertIn("compares only\n  the sentences that make a privacy promise",
-                      self._owner_summary())
+        doc = self._owner_summary()
+        self.assertIn('a sentence only counts when\n  it names what happens to your '
+                      'data', doc)
+        self.assertNotIn("compares only\n  the sentences that make a privacy promise",
+                         doc)
+
+    def test_owner_summary_churn_claim_is_true_of_the_shipped_rule(self):
+        """MW-OWNER-DOC-CHURN-CLAIM: the doc must not promise more than ships.
+
+        The doc tells the owner that editing marketing copy produces no alert.
+        That is only true if a marketing sentence is not a retention sentence,
+        and if a marketing-only edit produces no event at all.
+        """
+        doc = self._owner_summary()
+        self.assertIn("It does not go\n  looking for words like", doc)
+        for sentence in StructuralPrivacyRuleTests.CHURN:
+            self.assertFalse(watch.is_retention_sentence(sentence), sentence)
+            events = watch.diff(
+                state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})}),
+                state(policy={"opencode": policy_map(**{
+                    "glm-5-3-flash-free": GLM_PROSE + " " + sentence})}),
+                catalog({}), config(),
+            )
+            self.assertEqual(events, [], sentence)
 
     def test_owner_summary_no_longer_promises_group_c_is_silent(self):
         doc = self._owner_summary()

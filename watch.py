@@ -322,12 +322,21 @@ _RETAIN_VERB = (r"(?:keeps?|kept|stores?|stored|holds?|held|retains?|retained|"
 _RETAIN_UNIT = r"(days?|hours?|weeks?|months?)"
 # Unit -> days, used only to pick the longest window when a statement names two.
 _RETAIN_UNIT_DAYS = {"d": 1.0, "h": 1.0 / 24, "w": 7.0, "mo": 30.0}
+# Providers hedge a window ("up to", "at most", "no more than") and sometimes put
+# the number after the noun ("retention period is 30 days"). Every one of those
+# is a stated window: missing them printed "it does not say what it does with
+# your data" directly above the quote that says 30 days.
+_QUALIFIER = (r"(?:(?:up\s+to|at\s+most|no\s+more\s+than|less\s+than|"
+              r"not\s+more\s+than|a\s+maximum\s+of|maximum\s+of)\s+)?")
 RETAIN_PATTERNS = (
-    re.compile(_RETAIN_VERB + r"[^.;]{0,48}?\bfor\s+(\d+)\s+" + _RETAIN_UNIT + r"\b"),
+    re.compile(_RETAIN_VERB + r"[^.;]{0,48}?\b(?:for|within)\s+" + _QUALIFIER
+               + r"(\d+)\s+" + _RETAIN_UNIT + r"\b"),
     re.compile(r"\b(\d+)[-\s]" + _RETAIN_UNIT + r"\s+(?:retention|storage|log)\b"),
+    re.compile(r"retention\s+(?:period|window)\s*[:\-=]?\s*(?:is|of)?\s*" + _QUALIFIER
+               + r"(\d+)\s+" + _RETAIN_UNIT + r"\b"),
     re.compile(r"\b(?:deletes?|wipes?|erases?|removes?|purges?|discards?)"
-               r"[^.;]{0,48}?\bafter\s+(\d+)\s+" + _RETAIN_UNIT + r"\b"),
-    re.compile(_RETAIN_VERB + r"[^.;]{0,48}?\bwithin\s+(\d+)\s+" + _RETAIN_UNIT + r"\b"),
+               r"[^.;]{0,48}?\b(?:after|within)\s+" + _QUALIFIER
+               + r"(\d+)\s+" + _RETAIN_UNIT + r"\b"),
 )
 _RETAIN_UNIT_SUFFIX = {"d": "d", "h": "h", "w": "w", "mo": "mo"}
 _RETAIN_UNIT_WORD = {"d": "day", "h": "hour", "w": "week", "mo": "month"}
@@ -434,7 +443,8 @@ def classify(prose):
     # keeps its window.
     if _first_unanchored(NO_RETAIN_PATTERNS, low):
         return "zero-retention"
-    if re.search(r"\blogged\b|\blogs\b|\blogging\b", low):
+    if re.search(r"\blogged\b|\blogs\b|\blogging\b|\barchives?\b|\barchived\b|"
+                 r"\brecords?\b|\brecorded\b", low):
         return "logged"
     return "unstated"
 
@@ -475,26 +485,27 @@ def _sentences(text):
 
 
 def changed_sentence(before, after):
-    """The sentence in `after` that `before` does not contain.
+    """The sentence in `after` that changed and carries a privacy promise.
 
     A wording change is often an ADDED clause ("... It may disclose it to law
     enforcement on request."). Naming the class-carrying sentence there would
     point the owner at the one line that did not change, so a changed sentence
-    that makes a privacy promise wins.
+    that makes a privacy promise wins. A sentence that changed but states no
+    privacy posture is marketing copy: it is never named, because naming it
+    would tell the owner the provider changed something about his data when it
+    did not (AC-19/AC-25).
     """
     old = {" ".join(s.lower().split()) for s in _sentences(before)}
     new = [s for s in _sentences(after) if " ".join(s.lower().split()) not in old]
     for sentence in new:
-        if PRIVACY_TERMS.search(sentence.lower()):
+        if is_retention_sentence(sentence):
             return sentence
-    if new:
-        return new[0]
     # A clause rewritten in place leaves no new sentence behind; the sentence
     # that differs from its counterpart is the one that changed.
     was = _sentences(before)
     for index, sentence in enumerate(_sentences(after)):
         if index >= len(was) or " ".join(sentence.lower().split()) != " ".join(was[index].lower().split()):
-            return sentence
+            return sentence if is_retention_sentence(sentence) else ""
     return ""
 
 
@@ -522,14 +533,19 @@ def carrier_sentence(text, cls):
     elif cls == "trains-or-logs":
         keys = ("improve the model", "collect feedback", "train")
     elif cls == "logged":
-        keys = ("logged",)
+        # The prose says "logs", not "logged"; keying on the participle alone
+        # fell through to the marketing sentence that happens to come first.
+        keys = ("logged", "logs", "logging", "log your", "log the", "archives", "records")
     else:
         keys = ()
     for sentence in sentences:
         low = sentence.lower()
         if any(k in low for k in keys):
             return sentence
-    return sentences[0]
+    for sentence in sentences:
+        if is_retention_sentence(sentence):
+            return sentence
+    return ""
 
 
 def policy_name(text, fallback):
@@ -538,14 +554,67 @@ def policy_name(text, fallback):
     return head.strip(".,;:") or fallback
 
 
-# Words that make a sentence part of the privacy promise. Kept as a named
-# constant so the same test that forbids marketing churn can assert against it.
-PRIVACY_TERMS = re.compile(
-    r"zero[-\s]retention|retains?|retained|keeps?|keep|stored?|store|holds?|held|"
-    r"logs?|logged|archives?|\bdays?\b|train|training|improve the model|"
-    r"collect feedback|privacy|your data|your prompts|your inputs?|"
-    r"disclos\w*|shar\w*|third[\s-]part\w*|law enforcement|subpoena|"
-    r"sell|sold|transfer\w*|legal (?:request|process)|aggregate")
+# A sentence counts as a retention/privacy statement only when it STRUCTURALLY
+# makes one: an act (retain/keep/store/hold/log/archive/delete/purge) or a
+# disclosure act (disclose/share/sell/transfer) applied to the reader's data, or
+# a training act on it. A keyword list - "day", "log", "keep", "share" on their
+# own - is what made "Try it free for 7 days" and "Log in to see your usage"
+# read as retention alerts. Requiring the act AND its object is the rule that
+# excludes page furniture without a blacklist of today's junk strings.
+_DATA_NOUN = (r"(?:data|inputs?|prompts?|content|requests?|conversations?|messages?|"
+              r"queries|query|uploads?|submissions?|chats?|chat\s+logs?|"
+              r"personal\s+information|personal\s+data|training\s+data)")
+DATA_OBJECT = (r"(?:(?:your|their|the|any|all|this|that|such|"
+               r"user'?s?|users'|customer'?s?|person'?s?|reader'?s?)\s+)?"
+               + _DATA_NOUN)
+_RETENTION_ACT = (
+    r"(?:retain(?:s|ed|ing)?|keeps?|kept|keeping|stores?|stored|storing|holds?|"
+    r"held|holding|logs?|logged|logging|archiv(?:e|es|ed|ing)|record(?:s|ed|ing)?|"
+    r"sav(?:e|es|ed|ing)|persist(?:s|ed|ing)?|delet(?:e|es|ed|ing)|"
+    r"wip(?:e|es|ed|ing)|eras(?:e|es|ed|ing)|purg(?:e|es|ed|ing)|"
+    r"remov(?:e|es|ed|ing)|discard(?:s|ed|ing)?)")
+_TRAIN_ACT = (r"(?:train(?:s|ed|ing)?|learn(?:s|ed|ing)?|improv(?:e|es|ed|ing)|"
+              r"collect(?:s|ed|ing)?\s+feedback)")
+_DISCLOSURE_ACT = (r"(?:disclos(?:e|es|ed|ing)|shar(?:e|es|ed|ing)|sell|sold|"
+                   r"transfer(?:s|red|ring)?|provid(?:e|es|ed|ing)|"
+                   r"hand(?:s|ed)?\s+over|giv(?:e|es|ing)|given)")
+_LEGAL_OBJECT = (r"(?:law\s+enforcement|subpoena|legal\s+(?:request|process|order)|"
+                 r"court\s+order|third[\s-]part(?:y|ies)|partners?|affiliat(?:e|es)|"
+                 r"regulators?)")
+# "retention policy/period" names the subject outright; with a stated window it
+# is a retention sentence even where the object is a bare pronoun.
+_RETENTION_SUBJECT = re.compile(
+    r"retention\s+(?:policy|period|window)|data\s+retention|storage\s+period")
+
+
+def _adjacent_acts(first, second, low, gap=64):
+    """True when `first` and `second` occur in the same clause, either order."""
+    pattern = r"(?:%s)[^.;]{0,%d}?(?:%s)|(?:%s)[^.;]{0,%d}?(?:%s)" % (
+        first, gap, second, second, gap, first)
+    return bool(re.search(pattern, low))
+
+
+def is_retention_sentence(sentence):
+    """True only for a sentence that structurally states a privacy posture.
+
+    Used both to decide whether a wording edit is worth alerting on and to name
+    the sentence that carries a change, so it must not admit page furniture.
+    """
+    low = " ".join(str(sentence or "").lower().split())
+    if not low:
+        return False
+    if re.search(r"zero[-\s]retention|no\s+(?:data\s+)?(?:retention|storage|logging)", low):
+        return True
+    for patterns in (TRAIN_PATTERNS, NO_RETAIN_PATTERNS):
+        if _first_unanchored(patterns, low):
+            return True
+    if _RETENTION_SUBJECT.search(low) and retention_window(low):
+        return True
+    if _adjacent_acts(_RETENTION_ACT, DATA_OBJECT, low):
+        return True
+    if _adjacent_acts(_DISCLOSURE_ACT, DATA_OBJECT, low):
+        return True
+    return _adjacent_acts(_DISCLOSURE_ACT, _LEGAL_OBJECT, low)
 
 
 def retention_sentences(text):
@@ -553,16 +622,12 @@ def retention_sentences(text):
 
     Diffing the whole line would fire on a reworded marketing clause ("free for
     a limited time" -> "free for a short time"), which is noise. Diffing only
-    these sentences catches a reworded privacy promise at ANY class - including
-    a new disclosure or sharing clause that leaves the class alone - which is
-    the whole point of the tool, and stays silent on everything else.
+    the sentences that structurally state a privacy posture catches a reworded
+    promise at ANY class - including a new disclosure or sharing clause that
+    leaves the class alone - and stays silent on everything else.
     """
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text or "") if s.strip()]
-    kept = []
-    for sentence in sentences:
-        if PRIVACY_TERMS.search(sentence.lower()):
-            kept.append(" ".join(sentence.lower().split()))
-    return kept
+    return [" ".join(s.lower().split()) for s in _sentences(text)
+            if is_retention_sentence(s)]
 
 
 def policy_block_digest(policies):

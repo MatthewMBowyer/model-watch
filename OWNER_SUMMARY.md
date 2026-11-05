@@ -102,8 +102,10 @@ means a quiet day, not a broken tool.
 - It does not guess. If a source does not state a price, a date or a retention
   rule, the alert says `unstated` instead of making something up.
 - It does not alert on page churn. Editing the navigation bar, the marketing
-  copy or the layout of the provider's page produces no alert. It compares only
-  the sentences that make a privacy promise, so a reworded promise alerts even
+  copy or the layout of the provider's page produces no alert. It does not go
+  looking for words like "day", "log" or "share": a sentence only counts when
+  it names what happens to your data - keeps your prompts for 30 days, logs your
+  requests, deletes your inputs after 7 days - so a reworded promise alerts even
   when its meaning is unchanged, and a price or model-list change alerts as it
   always did.
 - It does not treat a broken fetch as news. If the provider's page is down, the
