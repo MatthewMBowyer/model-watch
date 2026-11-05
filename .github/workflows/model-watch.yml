@@ -31,6 +31,9 @@ jobs:
           python-version: "3.12"
 
       # watch.py is stdlib-only, so there is nothing to install
+      - name: Run the fixture suite
+        run: python tests/test_model_watch.py
+
       - name: Check catalogs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
