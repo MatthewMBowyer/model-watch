@@ -1330,6 +1330,56 @@ class JunkKeyTests(unittest.TestCase):
                         _url2, prose = watch.opencode_policy_text()
                     self.assertEqual(sorted(prose), sorted(clean), line)
 
+    # The remaining accept route after the plain-word rule: a NUMBERED section
+    # label carries a digit, and a digit is a distinctive shape, so the shape
+    # shortcut admitted "Section 3:", "Changelog 2025:" and "Table 2:" while the
+    # data-subject veto sat behind it. Same defect, same class (AC-13, AC-25).
+    NUMBERED_LABELS = (
+        "Section 3: requests are retained for 30 days.",
+        "Section 3 Requests are retained for 30 days.",
+        "Q1 2026: data is retained for 30 days.",
+        "2025 Requests are retained for 30 days.",
+        "Changelog 2025: requests are logged for 30 days.",
+        "Table 2: requests are retained for 30 days.",
+        "v2 Policy: data is retained for 30 days.",
+        "Step 1 Requests are retained for 30 days.",
+        "FAQ 2 Prompts are kept for 30 days.",
+        "Update 2: data is retained for 30 days.",
+        "Limits 2026: requests are retained for 30 days.",
+    )
+
+    def test_numbered_section_label_never_becomes_a_policy_key(self):
+        """A digit numbers a heading; it does not make a heading a model."""
+        known = {"beam-free", "glm-5-3-flash-free"}
+        for line in self.NUMBERED_LABELS:
+            with self.subTest(line=line):
+                self.assertEqual(watch.extract_policy([line], known=known), {}, line)
+
+    def test_numbered_section_label_alerts_nothing_against_a_seeded_baseline(self):
+        before = state(free={"opencode": ["glm-5-3-flash-free"]},
+                       policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
+        for line in self.NUMBERED_LABELS:
+            with self.subTest(line=line):
+                keys = watch.extract_policy([GLM_PROSE, line])
+                self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
+                events = watch.diff(
+                    before,
+                    state(free={"opencode": ["glm-5-3-flash-free"]},
+                          policy={"opencode": policy_map(**keys)}),
+                    catalog({"glm-5.3-flash-free": model()}), config(),
+                )
+                self.assertEqual(events, [], line)
+
+    def test_a_versioned_model_label_is_still_kept(self):
+        """The other direction: a dotted version IS part of a real name."""
+        known = {"glm-5-3-flash-free", "jev-1-13-free"}
+        for line, key in (
+            ("GLM-5.3-Flash Free: Prompts are retained for 30 days.", "glm-5-3-flash-free"),
+            ("Jev 1.13: Prompts are retained for 30 days.", "jev-1-13"),
+        ):
+            with self.subTest(line=line):
+                self.assertEqual(set(watch.extract_policy([line], known=known)), {key})
+
     def test_a_known_model_whose_name_carries_a_data_word_is_still_kept(self):
         """The data-subject veto cannot swallow a real, already-known model."""
         line = ("Beam Free Pricing is free on OpenCode for a limited time. "

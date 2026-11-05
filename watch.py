@@ -222,6 +222,12 @@ ENTRY_VERBS = r"\b(?:is|are|has|was|were|now)\b"
 # and every real name on the page that needs a hyphen also carries a digit.
 _NAME_DISTINCTIVE = re.compile(r"[0-9]|[.]|(?<=[a-z])[A-Z]")
 
+# The subset of a distinctive token that reads as part of a NAME rather than as a
+# section number: a dotted version ("5.3", "1.13") or an internal capital
+# ("MiniMax"). A bare integer, a year or an ordinal prefix ("Q1", "v2", "2025")
+# is how headings are numbered, not how models are named.
+_VERSION_SHAPE = re.compile(r"[.]|(?<=[a-z])[A-Z]")
+
 
 def known_identity(phrase, known):
     """True when `phrase` is an identity the run already knows as a model."""
@@ -304,8 +310,25 @@ def looks_like_model_name(phrase, labelled=False, known=None, subject=False):
         return False
     if tokens[0].lower() in NON_NAME_WORDS:
         return False
+    # The head ran on into the sentence's real subject ("Retention Policy
+    # Prompts are retained ..."), so the reader's data is the subject and the
+    # line states a posture, not a model. Judged BEFORE the shape shortcut: a
+    # numbered heading ("Section 3 Requests are retained ...") carries a digit,
+    # so the shortcut let it through on the very vocabulary the rule already
+    # treats as not-a-name. Only the LAST token counts: a real name may carry
+    # one of these words mid-name ("Log Runner Free"), never as its subject.
+    if tokens[-1].lower().strip("'\u2019s") in _DATA_SUBJECTS:
+        return False
     if any(_NAME_DISTINCTIVE.search(t) for t in tokens):
-        return True
+        # A LABEL is held to a stricter shape. "Section 3:", "Changelog 2025:"
+        # and "Table 2:" all carry a digit, so the digit alone let a numbered
+        # section heading key as a model and fire a retention alert naming
+        # something the source never states (AC-13/AC-25) - the same defect the
+        # plain-word rule closed, on the remaining accept route. A version
+        # marker that is part of a NAME ("GLM-5.3-Flash", "Jev 1.13") is a
+        # dotted version or an internal capital; a bare ordinal or a year is not.
+        if not labelled or any(_VERSION_SHAPE.search(t) for t in tokens):
+            return True
     if known_identity(phrase, known):
         return True
     # The head ran on into the sentence's real subject ("Retention Policy
