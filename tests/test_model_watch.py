@@ -1853,6 +1853,83 @@ class JunkKeyTests(unittest.TestCase):
         self.assertEqual(sorted(prose),
                          ["beam-free", "flint-40b-free", "glm-5-3-flash-free"])
 
+    # The CLASS behind MW-EXTRACTOR-SUBJECT-ROUTE-ADMITS-COLLECTIVE-PROSE, not
+    # the ten strings the reviewer measured. Every member is a sentence about a
+    # collection - a quantifier, a bare plural, a page's own section noun, a
+    # provider's section - and none of its words appears in watch.py as a
+    # quantifier or heading list. If one keys, the fix is a list of the measured
+    # shapes rather than the rule, which is the defect coming back.
+    COLLECTIVE_CLASS_HEADS = (
+        "Both of these models are retained for 30 days.",
+        "Certain models are retained for 30 days.",
+        "Various models are retained for 30 days.",
+        "Numerous models are retained for 30 days.",
+        "Several models are retained for 30 days.",
+        "A few models are retained for 30 days.",
+        "The models on this page are retained for 30 days.",
+        "These free models are retained for 30 days.",
+        "All OpenCode models are retained for 30 days.",
+        "Every OpenCode model retains data for 30 days.",
+        "All available free models here are retained for 30 days.",
+        "Models listed here are retained for 30 days.",
+        "Its models are retained for 30 days.",
+        "Their models are retained for 30 days.",
+        "Our models: prompts are retained for 30 days.",
+        "The following models are retained for 30 days.",
+        "OpenCode Zen: Prompts are retained for 30 days.",
+        "OpenCode's models are retained for 30 days.",
+        "OpenCode Console provides a list of models tested by the team.",
+        "OpenCode Go provides a subscription with included usage.",
+        "The platform retains data for 30 days.",
+        "This service retains data for 30 days.",
+        "All providers retain data for 30 days.",
+        "These endpoints retain data for 30 days.",
+        "No model retains data for 30 days.",
+    )
+
+    def test_the_collective_class_is_refused_not_just_the_measured_shapes(self):
+        """AC-13/AC-25: a group is never a model, whatever its wording.
+
+        Three routes, because a fix can hold on one and leak on another: no
+        identity data at all, a stale baseline that already holds the heading's
+        own key, and the full identity set `collect()` supplies.
+        """
+        for line in self.COLLECTIVE_CLASS_HEADS:
+            key = watch.slug(watch.policy_head(line))
+            with self.subTest(line=line):
+                self.assertEqual(watch.extract_policy([line]), {}, line)
+                self.assertEqual(watch.extract_policy([line], known={key}), {},
+                                 line)
+                self.assertEqual(
+                    watch.extract_policy([line], known=GLM_KNOWN,
+                                         observed=GLM_KNOWN), {}, line)
+
+    def test_the_collective_class_never_reaches_a_rendered_alert(self):
+        """The end of the path the reviewer measured, not just the extractor.
+
+        It measured "All models (OpenCode) is newly documented, and its
+        provider keeps your data for 30 days." in the owner's alert, so the
+        assertion is on the rendered body: it says nothing changed.
+        """
+        before = state(free={"opencode": ["glm-5-3-flash-free"]},
+                       policy={"opencode": policy_map(**{
+                           "glm-5-3-flash-free": GLM_PROSE})})
+        cat = catalog({"glm-5.3-flash-free": model()})
+        for line in self.COLLECTIVE_CLASS_HEADS + tuple(
+                self.COLLECTIVE_HEADS):
+            with self.subTest(line=line):
+                policies = policy_map(**{"glm-5-3-flash-free": GLM_PROSE})
+                for key, text in watch.extract_policy([line],
+                                                      known=GLM_KNOWN).items():
+                    policies[key] = {"text": text,
+                                     "class": watch.classify(text)}
+                after = state(free={"opencode": ["glm-5-3-flash-free"]},
+                              policy={"opencode": policies})
+                events = watch.diff(before, after, cat, config())
+                self.assertEqual(events, [], line)
+                body = watch.render(events, config())
+                self.assertIn("Nothing changed since the last check.", body, line)
+
     def test_a_plain_worded_new_name_is_still_admitted_on_the_subject_route(self):
         """The other direction: a real new name is still admitted, with evidence.
 
