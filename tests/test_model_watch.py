@@ -1164,6 +1164,94 @@ class JunkKeyTests(unittest.TestCase):
         ])
         self.assertEqual(set(got), {"north-mini-code-free"})
 
+    # MW-EXTRACTOR-ADMITS-SECTION-PROSE. "A model name carries a capital" was
+    # satisfied by any single capitalised common word, so a section label keyed
+    # as a model and fired a retention alert naming a model the source never
+    # states (AC-13, AC-25).
+    SECTION_PROSE = (
+        "Update: data is retained for 30 days.",
+        "Warning: requests are logged for abuse monitoring.",
+        "Limits: requests are retained for 30 days.",
+        "Storage: prompts are kept for 30 days.",
+        "Notes: data is retained for 30 days.",
+        "During the beta, requests are retained for 30 days.",
+        "Monthly Limits: requests are retained for 30 days.",
+        "Retention Policy: prompts are kept for 30 days.",
+        "Deprecated Models: requests are retained for 30 days.",
+        "Retention",
+    )
+    # The heading pair the reviewer measured as keys "retention-free"/"during".
+    HEADING_PAIRS = (
+        ("Retention", "Free models retain requests for 30 days."),
+        ("Retention", "Free models from stealth providers"),
+        ("Limits", "Requests are retained for 30 days."),
+    )
+
+    def test_section_prose_never_becomes_a_policy_key(self):
+        """AC-13: an entry must structurally name a model, not a heading."""
+        known = {"beam-free", "glm-5-3-flash-free"}
+        for line in self.SECTION_PROSE:
+            with self.subTest(line=line):
+                self.assertEqual(watch.extract_policy([line], known=known), {}, line)
+
+    def test_section_heading_pair_never_becomes_a_key(self):
+        known = {"beam-free", "glm-5-3-flash-free"}
+        for pair in self.HEADING_PAIRS:
+            with self.subTest(pair=pair):
+                self.assertEqual(watch.extract_policy(list(pair), known=known), {}, pair)
+
+    def test_section_prose_alerts_nothing_against_a_seeded_baseline(self):
+        """The consequence, and the trap: an EMPTY baseline skips the check.
+
+        `diff()` only compares policy maps when the previous snapshot has one,
+        so a test seeded with nothing passes whatever the extractor does. The
+        baseline here holds the real GLM statement.
+        """
+        before = state(free={"opencode": ["glm-5-3-flash-free"]},
+                       policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
+        for line in self.SECTION_PROSE:
+            with self.subTest(line=line):
+                keys = watch.extract_policy([GLM_PROSE, line])
+                self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
+                events = watch.diff(
+                    before,
+                    state(free={"opencode": ["glm-5-3-flash-free"]},
+                          policy={"opencode": policy_map(**keys)}),
+                    catalog({"glm-5.3-flash-free": model()}), config(),
+                )
+                self.assertEqual(events, [], line)
+
+    def test_section_prose_inserted_into_the_live_page_yields_only_real_models(self):
+        """The reviewer's reproduction, through the real opencode_policy_text().
+
+        Compared against the SAME extractor's reading of the clean page, not
+        against a list of expected junk keys: the pre-change code keyed the
+        inserted line as "update-data", which a blacklist of "update" would
+        have missed, and a version-independent comparison cannot be outgrown.
+        """
+        with offline():
+            _url, clean = watch.opencode_policy_text()
+            self.assertTrue(clean)
+            for line in self.SECTION_PROSE:
+                with self.subTest(line=line):
+                    page = DOC_PAGE.replace(
+                        "<li>" + BEAM_PROSE, "<p>%s</p><li>%s" % (line, BEAM_PROSE))
+                    with offline({watch.OPENCODE_DOCS[0]: page}):
+                        _url2, prose = watch.opencode_policy_text()
+                    self.assertEqual(sorted(prose), sorted(clean), line)
+
+    def test_a_plain_worded_model_name_is_kept_when_the_run_knows_it(self):
+        """The stricter rule is corroborated, not a vocabulary.
+
+        A model whose name is ordinary words must still be extracted when the
+        catalog or the previous snapshot carries it as an identity, so the rule
+        cannot become a word list in either direction.
+        """
+        line = "Mystery Model: During its free period, collected data is retained for 30 days."
+        self.assertEqual(watch.extract_policy([line]), {})
+        known = watch.policy_identities({"opencode": {"mystery-model": {}}}, {}, ["opencode"])
+        self.assertEqual(set(watch.extract_policy([line], known=known)), {"mystery-model"})
+
 
 # ------------------------------------------------------------------ identity
 

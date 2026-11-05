@@ -215,8 +215,34 @@ NON_NAME_WORDS = frozenset(
 
 ENTRY_VERBS = r"\b(?:is|are|has|was|were|now)\b"
 
+# A token that is distinctive by shape: a version marker, a hyphen or an
+# internal capital. A lone capitalised common word ("Update", "Warning",
+# "Retention") carries none of them, which is what keeps section prose out.
+_NAME_DISTINCTIVE = re.compile(r"[0-9]|[.\-]|(?<=[a-z])[A-Z]")
 
-def looks_like_model_name(phrase):
+
+def known_identity(phrase, known):
+    """True when `phrase` is an identity the run already knows as a model."""
+    if not known or not phrase:
+        return False
+    return slug(phrase) in known or normalise(phrase) in known
+
+
+def looks_like_model_name(phrase, labelled=False, known=None):
+    """True when `phrase` names a model rather than a piece of section prose.
+
+    Shape alone was not enough: any single capitalised common word satisfied
+    "carries a capital", so "Update: data is retained for 30 days." keyed as
+    the model "update" and fired a retention alert naming a model the source
+    never states (MW-EXTRACTOR-ADMITS-SECTION-PROSE, AC-13/AC-25).
+
+    Two shapes cannot be a model name and need no vocabulary:
+    a lone word with no version marker, hyphen or internal capital, and a
+    colon label of ordinary words. Both are still accepted when the run already
+    knows the phrase as a model identity (the catalog, the free list or the
+    previous snapshot), so a real model whose name is plain words is not lost
+    to this rule.
+    """
     phrase = phrase.strip().strip(".,;:")
     if not phrase or len(phrase) > 60:
         return False
@@ -229,6 +255,11 @@ def looks_like_model_name(phrase):
         return False
     if tokens[0].lower() in NON_NAME_WORDS:
         return False
+    distinctive = any(_NAME_DISTINCTIVE.search(t) for t in tokens)
+    if len(tokens) == 1:
+        return distinctive or known_identity(phrase, known)
+    if labelled:
+        return distinctive or known_identity(phrase, known)
     # A model name carries a capital, a digit or a dotted version.
     return any(re.search(r"[A-Z0-9.]", t) for t in tokens)
 
@@ -279,6 +310,13 @@ def policy_head(line):
     entries were keyed with.
     """
     first = re.split(r"(?<=[.!?])\s+", " ".join(line.split()), maxsplit=1)[0]
+    # A colon label ends the head. "Beam Free: Prompts and other inputs ..." is
+    # a real entry and "Update: data is retained for 30 days." is not, so the
+    # label alone is the head either way and the difference is judged by
+    # looks_like_model_name(), not by where the colon falls.
+    label = re.match(r"^([^:]{1,60}):\s", first)
+    if label:
+        return label.group(1).strip().strip(".,;:")
     run = []
     for token in first.split():
         word = token.strip(".,;:").lower()
@@ -301,22 +339,39 @@ def asserts_about_model(line):
     return is_retention_sentence(line) or bool(_MODEL_PREDICATE.search(line.lower()))
 
 
-def is_policy_entry(line):
+def head_is_labelled(line):
+    """True when the head is a section label rather than a model's own clause.
+
+    "Update: data is retained for 30 days." and "Big Pickle: During its free
+    period, ..." share a shape, so the colon alone decides nothing. It does
+    tell the caller the head is a LABEL, which is judged more strictly than a
+    name followed by its own sentence.
+    """
+    first = re.split(r"(?<=[.!?])\s+", " ".join(str(line or "").split()), maxsplit=1)[0]
+    return bool(re.match(r"^[^:]{1,60}:\s", first))
+
+
+def is_policy_entry(line, known=None):
     line = " ".join(line.split())
     if len(line) < 20:
         return False
-    if not looks_like_model_name(policy_head(line)):
+    head = policy_head(line)
+    if not looks_like_model_name(head, labelled=head_is_labelled(line), known=known):
         return False
     return asserts_about_model(line)
 
 
-def extract_policy(lines):
+def extract_policy(lines, known=None):
     """slug -> prose, for every line that is a real model statement.
 
     A statement can wrap: a page that puts the model name on one line and its
     prose on the next is joined, so a real entry is not lost to line breaking.
     The continuation must itself assert something and must not open with
     another model name, so furniture cannot be glued onto an entry.
+
+    `known` is the set of model identities this run already has (catalog ids,
+    free ids, the previous snapshot). It is what lets a plain-worded model name
+    survive the stricter label rule without any vocabulary list.
     """
     policies = {}
     lines = [" ".join(l.split()) for l in lines]
@@ -324,11 +379,13 @@ def extract_policy(lines):
         if not line:
             continue
         text = line
-        if not asserts_about_model(text) and looks_like_model_name(policy_head(text)):
+        if not asserts_about_model(text) and looks_like_model_name(
+                policy_head(text), known=known):
             nxt = next((l for l in lines[i + 1:] if l), "")
-            if nxt and not looks_like_model_name(policy_head(nxt)) and asserts_about_model(nxt):
+            if nxt and not looks_like_model_name(policy_head(nxt), known=known) \
+                    and asserts_about_model(nxt):
                 text = "%s %s" % (text, nxt)
-        if not is_policy_entry(text):
+        if not is_policy_entry(text, known=known):
             continue
         key = slug(policy_head(text))
         if key:
@@ -336,7 +393,7 @@ def extract_policy(lines):
     return policies
 
 
-def opencode_policy_text():
+def opencode_policy_text(known=None):
     """Find the page and the prose block that actually states model retention."""
     for url in OPENCODE_DOCS:
         try:
@@ -357,7 +414,7 @@ def opencode_policy_text():
                 if line in stop_words:
                     break
                 body.append(line)
-            found = extract_policy(body)
+            found = extract_policy(body, known=known)
             if len(found) > len(best):
                 best = found
         if best:
@@ -728,6 +785,31 @@ def policy_block_digest(policies):
 
 # ---------------------------------------------------------------- collection
 
+def policy_identities(cat, previous, providers):
+    """Every model identity this run already knows, as keys.
+
+    Used to corroborate a policy head that carries no version marker. The set
+    is built from data the run holds - catalog ids, the previous snapshot's
+    free and policy keys - so no model name is ever written into the code and a
+    plain-worded model the source states is not rejected.
+    """
+    known = set()
+    for pid in providers:
+        for mid in (cat.get(pid) or {}):
+            known.add(normalise(mid))
+            known.add(slug(mid))
+    for section in ("free", "policy"):
+        for pid, entries in ((previous or {}).get(section) or {}).items():
+            if isinstance(entries, dict):
+                keys = entries.keys()
+            else:
+                keys = entries or []
+            for key in keys:
+                known.add(normalise(key))
+                known.add(slug(key))
+    return known
+
+
 def collect(config, previous=None):
     """Build the snapshot for this run. Returns (snap, catalog, meta)."""
     previous = previous or {}
@@ -759,7 +841,7 @@ def collect(config, previous=None):
         snap["policy"][pid] = {}
 
     if "opencode" in providers:
-        doc_url, prose = opencode_policy_text()
+        doc_url, prose = opencode_policy_text(known=policy_identities(cat, previous, providers))
         if prose:
             meta["policy_ok"] = True
             snap["policy"]["opencode"] = {
