@@ -1942,6 +1942,30 @@ class BackgroundFreeModelTests(unittest.TestCase):
         self.assertIn("Background news only. Nothing to do.", doc)
         self.assertIn("the alert that arrives is just this section", doc)
 
+    def test_owner_summary_heading_claim_is_true_of_the_shipped_rule(self):
+        """The doc promises a numbered heading is never read as a model.
+
+        Round 12: a page numbers its headings ("3.1 Retention terms:"), and the
+        claim is only honest if such a line both fails to key and cannot be
+        named by an alert against a seeded baseline.
+        """
+        doc = " ".join(self._owner_summary().split())
+        self.assertIn("does not read a section heading as a model", doc)
+        self.assertIn("a number is not a model name", doc)
+        seeded = state(free={"opencode": ["glm-5-3-flash-free"]},
+                       policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
+        for line in ("3.1 Retention terms: requests are retained for 30 days.",
+                     "Section 4.2: data is retained for 30 days.",
+                     "Changelog v1.2: requests are logged for 30 days."):
+            with self.subTest(line=line):
+                keys = watch.extract_policy([GLM_PROSE, line])
+                self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
+                self.assertEqual(watch.diff(
+                    seeded,
+                    state(free={"opencode": ["glm-5-3-flash-free"]},
+                          policy={"opencode": policy_map(**keys)}),
+                    catalog({"glm-5.3-flash-free": model()}), config()), [], line)
+
     def test_group_c_only_run_still_notifies_as_the_doc_now_says(self):
         old = state(free={"opencode": []})
         new = state(free={"opencode": ["beam-free"]})   # not on the watch list

@@ -121,6 +121,14 @@ means a quiet day, not a broken tool.
 - It does not use a paid service, a server, or an API key. It is a GitHub
   Actions job on a six-hourly schedule.
 - It does not watch anything you did not ask for.
+- It does not read a section heading as a model. Provider pages number their
+  headings - "3.1 Retention terms:", "Section 4.2:", "Changelog v1.2:" - and a
+  number is not a model name. An entry on the data page is only taken as a model
+  when the model catalogue already lists it, or when its name is written the way
+  product names are written (a capital inside a word, as in "DeepSeek" or
+  "MiniMax"). The trade is deliberate: you may occasionally read about a brand
+  new free model a little later than ideal, and you will never be sent an alert
+  naming a heading that is not a model at all.
 
 ## Who can read your alerts
 
