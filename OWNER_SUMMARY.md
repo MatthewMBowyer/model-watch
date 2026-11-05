@@ -116,7 +116,10 @@ means a quiet day, not a broken tool.
   still says it.
 - It does not treat a broken fetch as news. If the provider's page is down, the
   tool records "could not check" and stays quiet. It will never tell you that
-  every model disappeared just because a page failed to load.
+  every model disappeared just because a page failed to load. The same holds
+  when the model catalogue it checks names against cannot be read: it records
+  "could not check" for the privacy wording as well, rather than reading the few
+  entries it can still recognise as if the page had dropped all the others.
 - It does not send "nothing changed" messages. Silence is the healthy state.
 - It does not use a paid service, a server, or an API key. It is a GitHub
   Actions job on a six-hourly schedule.

@@ -2365,6 +2365,36 @@ class BackgroundFreeModelTests(unittest.TestCase):
                           policy={"opencode": policy_map(**keys)}),
                     catalog({"glm-5.3-flash-free": model()}), config()), [], line)
 
+    def test_owner_summary_catalogue_claim_is_true_of_the_shipped_rule(self):
+        """The doc promises an unreadable catalogue is "could not check", not news.
+
+        Round 17: the identity data is what admits most entries, so a run
+        without it under-reads the page. The claim is only honest if such a run
+        records nothing AND the recovery announces nothing.
+        """
+        doc = " ".join(self._owner_summary().split())
+        self.assertIn("when the model catalogue it checks names against cannot be "
+                      "read", doc)
+        minimax = ("MiniMax M2 Free is free on OpenCode for a limited time. "
+                   "Its provider retains your data for 30 days.")
+        page = DOC_PAGE.replace("</ul>", "<li>%s</li></ul>" % minimax, 1)
+        with offline({watch.MODELS_DEV: "", watch.OPENCODE_DOCS[0]: page}):
+            degraded, _cat, meta = watch.collect(config(), {})
+        self.assertFalse(meta["policy_ok"])
+        self.assertEqual(degraded["policy"]["opencode"], {})
+        # ...and the under-read is real: the same page DOES key when the
+        # catalogue guard is out of the way, so the doc is not describing a
+        # situation that could not have gone wrong.
+        with offline({watch.MODELS_DEV: "", watch.OPENCODE_DOCS[0]: page}):
+            scripted = watch.opencode_policy_text(known=frozenset(),
+                                                  observed=frozenset())[1]
+        self.assertEqual(sorted(scripted), ["minimax-m2-free"])
+        with offline({watch.OPENCODE_DOCS[0]: page}):
+            healed, cat, meta2 = watch.collect(config(), degraded)
+        self.assertEqual(
+            [e for e in watch.diff(degraded, healed, cat, config(), meta2)
+             if e["kind"].startswith("policy")], [])
+
     def test_group_c_only_run_still_notifies_as_the_doc_now_says(self):
         old = state(free={"opencode": []})
         new = state(free={"opencode": ["beam-free"]})   # not on the watch list
