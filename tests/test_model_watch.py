@@ -1453,6 +1453,63 @@ class JunkKeyTests(unittest.TestCase):
                         _url2, prose = watch.opencode_policy_text()
                     self.assertEqual(sorted(prose), sorted(clean), line)
 
+    def test_a_provider_name_is_never_read_as_one_of_its_own_models(self):
+        """A provider heading carries an internal capital, and must still fail.
+
+        The internal-capital route is what accepts a model the run has never
+        seen ("MiniMax M2"). "OpenCode:" carries the same shape, so a page
+        heading naming the provider keyed as a model called OpenCode and would
+        alert about a model the page never states (MW-EXTRACTOR-PROVIDER-LABEL).
+        """
+        known = {"glm-5-3-flash-free", "beam-free", "jev-1-13"}
+        for line in ("OpenCode: Prompts are retained for 30 days.",
+                     "opencode: data is retained for 30 days.",
+                     "OpenRouter: requests are retained for 30 days.",
+                     "Opencode: prompts are kept for 30 days."):
+            with self.subTest(line=line):
+                self.assertEqual(watch.extract_policy([line], known=known), {}, line)
+                self.assertEqual(watch.extract_policy([line]), {}, line)
+
+    def test_a_provider_heading_alerts_nothing_against_a_seeded_baseline(self):
+        """The seeded case: with nothing seeded diff() skips the policy compare."""
+        before = state(free={"opencode": ["glm-5-3-flash-free"]},
+                       policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
+        for line in ("OpenCode: Prompts are retained for 30 days.",
+                     "OpenRouter: requests are retained for 30 days."):
+            with self.subTest(line=line):
+                keys = watch.extract_policy([GLM_PROSE, line])
+                self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
+                self.assertEqual(watch.diff(
+                    before,
+                    state(free={"opencode": ["glm-5-3-flash-free"]},
+                          policy={"opencode": policy_map(**keys)}),
+                    catalog({"glm-5.3-flash-free": model()}), config()), [], line)
+
+    def test_a_provider_heading_in_the_live_block_adds_no_key(self):
+        """The same route end-to-end, through the real opencode_policy_text()."""
+        with offline():
+            _url, clean = watch.opencode_policy_text()
+            self.assertEqual(len(clean), 3)
+            for line in ("OpenCode: Prompts are retained for 30 days.",
+                         "OpenRouter: requests are retained for 30 days."):
+                with self.subTest(line=line):
+                    page = DOC_PAGE.replace(
+                        "<li>" + BEAM_PROSE, "<p>%s</p><li>%s" % (line, BEAM_PROSE))
+                    with offline({watch.OPENCODE_DOCS[0]: page}):
+                        _url2, prose = watch.opencode_policy_text()
+                    self.assertEqual(sorted(prose), sorted(clean), line)
+
+    def test_the_provider_refusal_does_not_close_a_real_name(self):
+        """The other direction: a model whose name holds a provider word is kept."""
+        for line, key in (
+            ("OpenCode Zen Free: Prompts are retained for 30 days.", "opencode-zen-free"),
+            ("OpenRouter Auto Free is free on OpenCode for a limited time.",
+             "openrouter-auto-free"),
+        ):
+            with self.subTest(line=line):
+                self.assertIn(key, watch.extract_policy([line]))
+
+
     def test_a_real_model_name_survives_the_same_rule_on_both_routes(self):
         """The other direction: the fix must not close a genuine entry.
 
@@ -1952,11 +2009,13 @@ class BackgroundFreeModelTests(unittest.TestCase):
         doc = " ".join(self._owner_summary().split())
         self.assertIn("does not read a section heading as a model", doc)
         self.assertIn("a number is not a model name", doc)
+        self.assertIn("Nor is the provider's own name a model", doc)
         seeded = state(free={"opencode": ["glm-5-3-flash-free"]},
                        policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
         for line in ("3.1 Retention terms: requests are retained for 30 days.",
                      "Section 4.2: data is retained for 30 days.",
-                     "Changelog v1.2: requests are logged for 30 days."):
+                     "Changelog v1.2: requests are logged for 30 days.",
+                     "OpenCode: Prompts are retained for 30 days."):
             with self.subTest(line=line):
                 keys = watch.extract_policy([GLM_PROSE, line])
                 self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)

@@ -99,6 +99,15 @@ def normalise(model_id):
     return re.sub(r"[._\-]+", "-", value)
 
 
+# The provider names as identities, so a section label that IS a provider
+# ("OpenCode: Prompts are retained ...") is refused by looks_like_model_name()
+# without a hand-written list of heading words. Built from PROVIDER_LABEL, the
+# same table the renderer uses, so it cannot drift from the providers shipped.
+_PROVIDER_IDENTITIES = frozenset(
+    slug(value) for value in PROVIDER_LABEL.values()) | frozenset(
+    slug(value) for value in PROVIDER_LABEL)
+
+
 def provider_of(entry):
     return entry.split("/", 1)[0] if "/" in entry else ""
 
@@ -340,6 +349,14 @@ def looks_like_model_name(phrase, labelled=False, known=None, subject=False):
     # carry one of these words mid-name ("Log Runner Free"), never as its
     # subject.
     if tokens[-1].lower().strip("'\u2019s") in _DATA_SUBJECTS:
+        return False
+    # A provider's own name is never one of its models. "OpenCode: Prompts are
+    # retained for 30 days." is a section label, and it satisfied the internal
+    # capital that accepts a new name, so it keyed as a model called OpenCode
+    # and would fire a retention alert naming something the page never states
+    # (AC-13/AC-25). The identities come from PROVIDER_LABEL - this run's own
+    # providers - so no heading word is written down here.
+    if slug(phrase) in _PROVIDER_IDENTITIES:
         return False
     # Both routes, one rule: a known identity, or an internal capital. Applied
     # identically to a colon label and to a name followed by its own clause, so
