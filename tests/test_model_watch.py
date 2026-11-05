@@ -839,6 +839,37 @@ class StructuralPrivacyRuleTests(unittest.TestCase):
         for sentence in no:
             self.assertFalse(watch.is_retention_sentence(sentence), sentence)
 
+    def test_territory_list_edit_is_silent(self):
+        """The country list is the page's most churn-prone copy and states nothing."""
+        before = BEAM_PROSE + (" It is not available in Angola, Belarus, Cambodia "
+                               "and Cuba.")
+        after = (BEAM_PROSE + " It is not available in Angola, Belarus, Cambodia, "
+                 "Cuba and Zambia.")
+        self.assertEqual(watch.retention_sentences(before),
+                         watch.retention_sentences(after))
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{"beam-free": before})}),
+            state(policy={"opencode": policy_map(**{"beam-free": after})}),
+            catalog({}), config(),
+        )
+        self.assertEqual(events, [])
+
+    def test_training_sentence_reword_still_fires(self):
+        """A reworded training promise is a privacy change, not page churn."""
+        before = TRAINS_PROSE
+        after = TRAINS_PROSE.replace("collect feedback and improve the model",
+                                     "collect feedback to improve its models")
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{"flint-40b-free": before})}),
+            state(policy={"opencode": policy_map(**{"flint-40b-free": after})}),
+            catalog({}), config(),
+        )
+        self.assertEqual([e["kind"] for e in events], ["policy_changed"])
+        carrier = ("The team is using this time to collect feedback "
+                   "to improve its models.")
+        self.assertIn('The sentence carrying the change: "%s"' % carrier,
+                      watch.render(events, config()).replace("\n", " "))
+
     def test_the_junk_strings_are_excluded_by_the_rule_not_a_blacklist(self):
         """AC-13 in spirit: the exclusion must be structural, not enumerative."""
         import inspect
