@@ -799,6 +799,23 @@ class StructuralPrivacyRuleTests(unittest.TestCase):
         "Log in to see more.",
         "Availability is announced on the blog.",
         "Scroll down for the full list of days and times.",
+        # The wider churn list the review measured 11 of 12 against: the same
+        # class of non-retention copy, so the rule cannot regress to a keyword.
+        "Sign up today and get started in minutes.",
+        "Terms and conditions apply. See the pricing page.",
+        "This model is available in 12 regions worldwide.",
+        "Read the docs for setup instructions.",
+        "Download the desktop app for macOS.",
+        "Follow us on X for release notes.",
+        "Pricing is shown per million tokens below.",
+        "The table below lists every free model.",
+        "We store your login session in a cookie.",
+        "Cookies help us improve the experience.",
+        "Data centres are located in the EU and US.",
+        "Retention policies vary; see the provider's page.",
+        "Model weights are open and available on Hugging Face.",
+        "Billing runs monthly and can be cancelled any time.",
+        "This page was updated on 1 November.",
     )
 
     def test_no_appended_marketing_sentence_fires_a_retention_alert(self):
