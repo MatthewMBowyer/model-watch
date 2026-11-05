@@ -105,8 +105,9 @@ python tests/test_model_watch.py
 The suite covers the summary shape and group counts, the retention rules (class
 change, newly documented worse model, model removed from the docs), junk page
 furniture, OpenRouter exclusions, watched-model identity across the real
-dot/dash id spellings, notification wiring, quiet-run behaviour, `--dry-run`,
-dead-upstream handling, rerun determinism and stdlib-only.
+dot/dash id spellings, a watched model returning to the free list, notification
+wiring, quiet-run behaviour, `--dry-run`, dead-upstream handling, rerun
+determinism and stdlib-only.
 
 ## Running it locally
 

@@ -21,7 +21,10 @@ Three things, every six hours, for free:
    A model moving from the first to either of the others is the single most
    important thing this tool exists to catch.
 3. **Other free models appearing or disappearing.** This is background news.
-   It is listed last, and it never wakes your phone on its own.
+   It is listed last and it is not urgent: a free model you do not use appearing
+   or disappearing never changes anything about your setup. It rides along in
+   the same alert as the first two groups. If it is the only thing that changed,
+   the alert that arrives is just this section, and there is nothing to do.
 
 It only watches **OpenCode** now. OpenRouter is not watched, because you do not
 use it and its alerts were unreadable.
@@ -65,6 +68,10 @@ may start charging you. Switch to another free model, or accept the cost.
 The model is gone from the catalogue. Whatever uses it will fail. Point it at
 something else.
 
+**"One model you watch is free again: X."**
+A model on your watch list that had stopped being free is free again. Nothing to
+do unless you had stopped using it because it cost money.
+
 **"A model you watch changed its data-retention wording: X."**
 The provider changed what it says about your prompts. Read the quoted before and
 after. If it moved from zero-retention to anything else, decide whether you are
@@ -76,7 +83,8 @@ A retention statement changed on a model that is not on your watch list. Worth a
 glance; usually nothing to do.
 
 **"One free model changed, and it is not on your watch list."**
-Background news only. Nothing to do.
+Background news only. Nothing to do. This is the whole alert when the only thing
+that changed was a free model you do not use.
 
 **"Nothing changed since the last check."**
 You will not normally see this on your phone. A quiet run writes its summary
@@ -104,6 +112,9 @@ The alerts are posted to two places:
 
 - a comment on the issue `[model-watch] changes` in your repository, and
 - an **ntfy** topic, which is what actually reaches your phone.
+
+Both fire when something changed. A run with nothing to report sends neither -
+it writes its summary into the Actions run page.
 
 **Anyone who knows the ntfy topic name can read those alerts.** The topic is a
 public name in a public URL, not a password. The alerts contain model names,

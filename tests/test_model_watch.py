@@ -836,6 +836,142 @@ class DelistingTests(unittest.TestCase):
         self.assertNotIn("$0 in, $0 out", text)
 
 
+class WatchedFreeAgainTests(unittest.TestCase):
+    """A watched model that RETURNS to the free list must announce itself.
+
+    Reviewer defect MW-HEADLINE-WATCHED-FREE-ADDED: `free_added` with
+    watched=True fell through `_headline` to "Nothing changed since the last
+    check." on an alert that notifies, so the one sentence the owner reads
+    contradicted the body under it.
+    """
+
+    def _returning(self, models):
+        """The owner's watched models come back at 0/0 after being absent."""
+        old = state(free={"opencode": []})
+        new = state(free={"opencode": list(models)})
+        cat = catalog({m: model(0.0, 0.0) for m in models})
+        return watch.diff(old, new, cat, config())
+
+    def test_one_watched_model_free_again_headline(self):
+        events = self._returning(["kimi-k2.5-free"])
+        self.assertEqual([(e["kind"], e["watched"]) for e in events],
+                         [("free_added", True)])
+        text = watch.render(events, config())
+        self.assertEqual(text.splitlines()[0],
+                         "One model you watch is free again: kimi-k2.5-free.")
+        self.assertNotEqual(text.splitlines()[0], "Nothing changed since the last check.")
+
+    def test_two_watched_models_free_again_plural(self):
+        events = self._returning(["kimi-k2.5-free", "glm-5.3-flash-free"])
+        self.assertEqual(sorted(e["kind"] for e in events), ["free_added", "free_added"])
+        self.assertTrue(all(e["watched"] for e in events))
+        text = watch.render(events, config())
+        self.assertEqual(
+            text.splitlines()[0],
+            "2 models you watch are free again: glm-5.3-flash-free, kimi-k2.5-free.",
+        )
+
+    def test_watched_free_added_lands_in_group_a_with_a_count_of_one(self):
+        events = self._returning(["kimi-k2.5-free"])
+        text = watch.render(events, config())
+        self.assertIn("Models you watch (1)", text)
+        self.assertIn("Other free models (0)", text)
+        self.assertIn("kimi-k2.5-free is a model you watch, and it is free again on OpenCode.",
+                      text)
+
+    def test_watched_free_added_is_not_a_background_event(self):
+        """It is group (a): a watched model, so it never reads as background news."""
+        events = self._returning(["kimi-k2.5-free"])
+        self.assertTrue(all(e["watched"] for e in events))
+        self.assertIn("Models you watch (1)", watch.render(events, config()))
+
+    def test_free_again_headline_is_one_sentence(self):
+        text = watch.render(self._returning(["kimi-k2.5-free"]), config())
+        headline = text.splitlines()[0]
+        self.assertEqual(len(re.findall(r"[.!?](\s|$)", headline)), 1, headline)
+
+
+class BackgroundFreeModelTests(unittest.TestCase):
+    """Reviewer defect MW-OWNER-SUMMARY-GROUP-C-SILENT.
+
+    The reviewer allowed either resolution: suppress the ping for a run whose
+    only news is a free model the owner does not watch, or correct the doc.
+    AC-40 / INV-19 require a run WITH events to hand the rendered summary to
+    both notifiers, so the doc is corrected and these tests pin the agreement:
+    a background-only run DOES notify, and OWNER_SUMMARY.md no longer says it
+    does not.
+    """
+
+    def _main(self, old, new, cat, cfg=None):
+        cfg = cfg or config()
+        calls = []
+        originals = (watch.notify_issue, watch.notify_webhook, watch.collect,
+                     watch.load_config, watch.load_state, watch.write_state)
+        try:
+            watch.collect = lambda c, prev=None: (
+                new, cat, {"providers_ok": {"opencode": True}, "catalog_ok": True,
+                           "policy_ok": True})
+            watch.load_config = lambda path=None: cfg
+            watch.load_state = lambda path=None: old
+            watch.write_state = lambda s, path=None: calls.append("state")
+            watch.notify_issue = lambda *a, **k: calls.append("issue")
+            watch.notify_webhook = lambda *a, **k: calls.append("webhook")
+            with tempfile.TemporaryDirectory() as tmp:
+                summary_path = os.path.join(tmp, "summary.md")
+                os.environ["GITHUB_STEP_SUMMARY"] = summary_path
+                os.environ["GITHUB_TOKEN"] = "unused"
+                os.environ["GITHUB_REPOSITORY"] = "MatthewMBowyer/model-watch"
+                try:
+                    watch.main([])
+                finally:
+                    for key in ("GITHUB_STEP_SUMMARY", "GITHUB_TOKEN",
+                                "GITHUB_REPOSITORY"):
+                        os.environ.pop(key, None)
+                with open(summary_path, encoding="utf-8") as fh:
+                    step = fh.read()
+        finally:
+            (watch.notify_issue, watch.notify_webhook, watch.collect,
+             watch.load_config, watch.load_state, watch.write_state) = originals
+        return calls, step
+
+    def _owner_summary(self):
+        return open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 os.pardir, "OWNER_SUMMARY.md"), encoding="utf-8").read()
+
+    def test_owner_summary_no_longer_promises_group_c_is_silent(self):
+        doc = self._owner_summary()
+        self.assertNotIn("never wakes your phone on its own", doc)
+        self.assertIn("rides along in", doc)
+
+    def test_owner_summary_states_what_a_group_c_only_run_actually_does(self):
+        doc = self._owner_summary()
+        self.assertIn("Background news only. Nothing to do.", doc)
+        self.assertIn("the alert that arrives is just this section", doc)
+
+    def test_group_c_only_run_still_notifies_as_the_doc_now_says(self):
+        old = state(free={"opencode": []})
+        new = state(free={"opencode": ["beam-free"]})   # not on the watch list
+        calls, step = self._main(old, new, catalog({"beam-free": model()}))
+        self.assertIn("issue", calls)
+        self.assertIn("webhook", calls)
+        self.assertIn("One free model changed, and it is not on your watch list.", step)
+        self.assertIn("Other free models (1)", step)
+
+    def test_watched_event_still_notifies(self):
+        old = state(free={"opencode": []})
+        new = state(free={"opencode": ["kimi-k2.5-free"]})
+        calls, _ = self._main(old, new, catalog({"kimi-k2.5-free": model()}))
+        self.assertIn("issue", calls)
+        self.assertIn("webhook", calls)
+
+    def test_unwatched_retention_change_still_notifies(self):
+        old = state(policy={"opencode": policy_map(**{"beam-free": GLM_PROSE})})
+        new = state(policy={"opencode": policy_map(**{"beam-free": TRAINS_PROSE})})
+        calls, _ = self._main(old, new, catalog({}))
+        self.assertIn("issue", calls)
+        self.assertIn("webhook", calls)
+
+
 class OpenRouterStatementTests(unittest.TestCase):
     """AC-11: when OpenRouter is configured the alert SAYS what it excludes."""
 

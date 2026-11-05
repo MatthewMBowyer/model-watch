@@ -620,6 +620,7 @@ def _headline(events):
     paid = [e for e in events if e["watched"] and e["kind"] in
             ("free_removed", "watched_delisted", "watched_not_free")]
     retention = [e for e in events if e["watched"] and is_retention(e)]
+    watched_free = [e for e in events if e["watched"] and e["kind"] == "free_added"]
     other_retention = [e for e in events if not e["watched"] and is_retention(e)]
     other_free = [e for e in events if not e["watched"] and is_free_event(e)]
 
@@ -639,6 +640,11 @@ def _headline(events):
         if len(retention) == 1:
             return "A model you watch changed its data-retention wording: %s." % names
         return "%d models you watch changed their data-retention wording: %s." % (len(retention), names)
+    if watched_free:
+        names = ", ".join(e.get("display") or e["model"] for e in watched_free)
+        if len(watched_free) == 1:
+            return "One model you watch is free again: %s." % names
+        return "%d models you watch are free again: %s." % (len(watched_free), names)
     if other_retention:
         return ("A provider changed its data-retention wording - this is the kind of "
                 "change this tool exists to catch.")
@@ -684,9 +690,14 @@ def _free_item(event):
     after = event.get("price_after") or (None, None)
     lines = []
     if event["kind"] == "free_added":
-        lines.append("%s is a new free model on %s." % (name, label))
-        lines.append("It is free to use right now.")
-        lines.append("Nothing to do unless you want to try it.")
+        if event["watched"]:
+            lines.append("%s is a model you watch, and it is free again on %s." % (name, label))
+            lines.append("It is free to use right now.")
+            lines.append("Nothing to do unless you had stopped using it because it cost money.")
+        else:
+            lines.append("%s is a new free model on %s." % (name, label))
+            lines.append("It is free to use right now.")
+            lines.append("Nothing to do unless you want to try it.")
     elif event["kind"] in ("free_removed", "watched_not_free"):
         lines.append("%s is no longer free." % name)
         if event.get("price_before"):
