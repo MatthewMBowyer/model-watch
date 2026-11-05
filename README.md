@@ -23,8 +23,10 @@ By default it watches **OpenCode only**:
 config that lists it, but it is not watched by default: its catalog is full of
 router aliases (`openrouter/*`), audio-output models and `stealth/*` promo slots
 that are not chat models, and alerting on them produced unreadable noise. When
-`openrouter` is listed, those three classes are excluded, and the exclusion is
-stated in `watch.py` as `OPENROUTER_EXCLUSIONS`.
+`openrouter` is listed, those three classes are excluded, the exclusion is
+stated in `watch.py` as `OPENROUTER_EXCLUSIONS`, and the rendered alert carries
+it as a trailing "About OpenRouter: ..." paragraph so the owner can see why a
+`$0` row was not reported as free.
 
 The retention signal only exists as prose, so each free-model sentence is
 classified into `zero-retention`, `retained-Nd`, `trains-or-logs`, `logged` or

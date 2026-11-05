@@ -48,6 +48,12 @@ Under each item it says, in plain words, what the model is, what changed, and
 what to do. For a retention change it quotes the sentence as it was and the
 sentence as it is now, so you can judge the change yourself.
 
+One model is one item. If a model you watch disappears from the catalogue you
+get a single entry saying it is no longer listed, and the headline counts one
+model - it is never counted twice as both "gone" and "no longer free". A
+provider re-spelling the same model id (dots versus dashes) is not a change and
+alerts nothing.
+
 ## What each alert means, and what to do
 
 **"One model you watch is no longer free: X."**

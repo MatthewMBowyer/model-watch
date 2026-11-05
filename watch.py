@@ -498,10 +498,19 @@ def diff(old, new, cat, config, meta=None):
                 # No baseline for this provider yet: record it silently rather
                 # than announce every existing model as new.
                 continue
-            before, now = set(before_all.get(pid) or []), set(free)
-            for mid in sorted(now - before):
+            # Compared on normalised identity, exactly like watched_entry():
+            # a punctuation re-spelling of an unchanged id is the same model,
+            # so it must not read as both a new free model and a lost one.
+            before_by_key, now_by_key = {}, {}
+            for mid in before_all.get(pid) or []:
+                before_by_key.setdefault(normalise(mid), mid)
+            for mid in free or []:
+                now_by_key.setdefault(normalise(mid), mid)
+            for key in sorted(set(now_by_key) - set(before_by_key)):
+                mid = now_by_key[key]
                 events.append(_free_event("free_added", pid, mid, cat, config, None, _price(cat, pid, mid)))
-            for mid in sorted(before - now):
+            for key in sorted(set(before_by_key) - set(now_by_key)):
+                mid = before_by_key[key]
                 events.append(_free_event("free_removed", pid, mid, cat, config, (0.0, 0.0), _price(cat, pid, mid)))
 
     if meta.get("policy_ok", True):
@@ -557,6 +566,13 @@ def diff(old, new, cat, config, meta=None):
             # An empty provider catalog cannot distinguish "delisted" from
             # "the catalog did not load", so it is never read as a delisting.
             if not present and was_free and (cat.get(pid) or {}):
+                # One disappearance is ONE item. The free-set diff already saw
+                # this model leave the free list; keep the delisting (which is
+                # the truthful cause) and drop the duplicate free_removed.
+                key = normalise(mid)
+                events = [e for e in events if not (
+                    e["kind"] == "free_removed" and e["provider"] == pid
+                    and normalise(e["model"]) == key)]
                 events.append(_free_event("watched_delisted", pid, mid, cat, config, None, None))
             elif present and was_free and not free_now:
                 already = any(
@@ -613,7 +629,11 @@ def _headline(events):
             if all(e["kind"] == "watched_delisted" for e in paid):
                 return "One model you watch is no longer listed by its provider: %s." % names
             return "One model you watch is no longer free: %s." % names
-        return "%d models you watch are no longer free: %s." % (len(paid), names)
+        if all(e["kind"] == "watched_delisted" for e in paid):
+            return "%d models you watch are no longer listed by their providers: %s." % (len(paid), names)
+        if all(e["kind"] != "watched_delisted" for e in paid):
+            return "%d models you watch are no longer free: %s." % (len(paid), names)
+        return "%d models you watch are no longer free or no longer listed: %s." % (len(paid), names)
     if retention:
         names = ", ".join(e.get("display") or e["model"] for e in retention)
         if len(retention) == 1:
@@ -728,6 +748,11 @@ def render(events, config=None):
         lines.append("")
 
     text = "\n".join(lines).rstrip("\n")
+    # AC-11: when OpenRouter is configured the alert SAYS what it excludes, so
+    # the owner can see why a "$0" row was not reported as free. A quiet run
+    # says nothing at all, so it is never padded with this.
+    if events and "openrouter" in (config.get("providers") or []):
+        text += "\n\nAbout OpenRouter: %s" % wrap(OPENROUTER_EXCLUSIONS)
     mention = (config.get("mention") or "").strip()
     if events and mention:
         text += "\n\n@%s" % mention

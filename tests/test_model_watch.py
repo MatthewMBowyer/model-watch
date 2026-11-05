@@ -256,6 +256,23 @@ class GroupingTests(unittest.TestCase):
         self.assertIn("Data retention and privacy wording (0)", text)
         self.assertIn("Other free models (0)", text)
 
+    def test_delisted_watched_model_keeps_count_and_listing_in_agreement(self):
+        """INV-03 / INV-15: the stated count must equal the items actually listed,
+        and the one model must be listed exactly once."""
+        events = watch.diff(
+            state(free={"opencode": ["kimi-k2.5-free"]}),
+            state(free={"opencode": []}),
+            catalog({"glm-5.3-flash-free": model()}),
+            config(),
+        )
+        text = watch.render(events, config())
+        group_a = text.split("Data retention and privacy wording")[0]
+        self.assertEqual(sum(1 for l in group_a.splitlines()
+                             if l.startswith("kimi-k2.5-free")), 1, group_a)
+        self.assertIn("Models you watch (1)", text)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(sum(1 for e in events if e["watched"]), 1)
+
     def test_group_b_count_line_mentions_the_watched_one_above(self):
         old = state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
         new = state(policy={"opencode": policy_map(**{"glm-5-3-flash-free": BEAM_PROSE})})
@@ -747,7 +764,144 @@ class ReadabilityTests(unittest.TestCase):
         self.assertNotIn("@MatthewMBowyer", watch.render([], config()))
 
 
+class DelistingTests(unittest.TestCase):
+    """A watched model leaving the catalog is ONE item, and a re-spelt free id
+    is NO change (reviewer defects MW-DUP-DELISTED-HEADLINE, MW-FREE-SET-RESPELT).
+    """
+
+    def test_one_delisted_watched_model_is_one_item(self):
+        old = state(free={"opencode": ["kimi-k2.5-free"]})
+        new = state(free={"opencode": []})
+        cat = catalog({"glm-5.3-flash-free": model()})
+        events = watch.diff(old, new, cat, config())
+        self.assertEqual([(e["kind"], e["model"]) for e in events],
+                         [("watched_delisted", "kimi-k2.5-free")])
+        text = watch.render(events, config())
+        self.assertEqual(
+            text.splitlines()[0],
+            "One model you watch is no longer listed by its provider: kimi-k2.5-free.",
+        )
+        self.assertIn("Models you watch (1)", text)
+        self.assertEqual(text.count("kimi-k2.5-free"), 2, text)  # headline + item
+        self.assertNotIn("no longer free", text)
+        self.assertNotIn("unstated", text)
+
+    def test_three_delisted_watched_models_are_three_items(self):
+        old = state(free={"opencode": list(WATCH_MODELS)})
+        new = state(free={"opencode": []})
+        events = watch.diff(old, new, catalog({"other-free": model()}), config())
+        self.assertEqual(len(events), 3)
+        self.assertEqual(sorted(e["model"] for e in events), sorted(WATCH_MODELS))
+        text = watch.render(events, config())
+        self.assertTrue(text.startswith("3 models you watch are no longer listed by "
+                                        "their providers: "), text.splitlines()[0])
+        self.assertIn("Models you watch (3)", text)
+        for name in WATCH_MODELS:
+            self.assertEqual(text.count(name), 2, name)  # headline + one item
+        self.assertNotIn("no longer free", text)
+
+    def test_mixed_delisting_and_paid_names_each_model_once(self):
+        old = state(free={"opencode": ["kimi-k2.5-free", "deepseek-v4.1-flash-free"]})
+        new = state(free={"opencode": []})
+        cat = catalog({"deepseek-v4.1-flash-free": model(0.5, 1.5)})
+        events = watch.diff(old, new, cat, config())
+        self.assertEqual(sorted(e["kind"] for e in events),
+                         ["free_removed", "watched_delisted"])
+        text = watch.render(events, config())
+        self.assertEqual(
+            text.splitlines()[0],
+            "2 models you watch are no longer free or no longer listed: "
+            "deepseek-v4.1-flash-free, kimi-k2.5-free.",
+        )
+        self.assertIn("Models you watch (2)", text)
+        for name in ("kimi-k2.5-free", "deepseek-v4.1-flash-free"):
+            self.assertEqual(text.count(name), 2, name)  # headline + one item
+
+    def test_free_set_respelling_is_not_a_change(self):
+        old = state(free={"opencode": ["kimi-k2.5-free"]})
+        new = state(free={"opencode": ["kimi-k2-5-free"]})  # same id, re-spelt
+        cat = catalog({"kimi-k2.5-free": model()})
+        events = watch.diff(old, new, cat, config())
+        self.assertEqual(events, [])
+        self.assertEqual(watch.render(events, config()).splitlines()[0],
+                         "Nothing changed since the last check.")
+
+    def test_free_set_respelling_does_not_claim_new_and_removed(self):
+        old = state(free={"opencode": ["beam-free", "kimi-k2.5-free"]})
+        new = state(free={"opencode": ["beam-free", "kimi_k2_5_free"]})
+        cat = catalog({"beam-free": model(), "kimi-k2.5-free": model()})
+        text = watch.render(watch.diff(old, new, cat, config()), config())
+        self.assertNotIn("is a new free model", text)
+        self.assertNotIn("is no longer free", text)
+        self.assertNotIn("$0 in, $0 out", text)
+
+
+class OpenRouterStatementTests(unittest.TestCase):
+    """AC-11: when OpenRouter is configured the alert SAYS what it excludes."""
+
+    def test_alert_states_the_exclusions_when_openrouter_is_configured(self):
+        cfg = config(providers=["opencode", "openrouter"])
+        old = state(free={"openrouter": ["openrouter/free"]})
+        new = state(free={"openrouter": []})
+        cat = {"openrouter": {"cohere/north-mini-code:free": model()}}
+        text = watch.render(watch.diff(old, new, cat, cfg), cfg)
+        self.assertIn("About OpenRouter:", text)
+        self.assertIn("router alias", text)
+        self.assertIn("output modalities", text)
+        self.assertIn("stealth/*", text)
+
+    def test_shipped_config_alert_carries_no_openrouter_sentence(self):
+        old = state(free={"opencode": ["kimi-k2.5-free"]})
+        new = state(free={"opencode": []})
+        cat = catalog({"kimi-k2.5-free": model(0.2, 0.8)})
+        text = watch.render(watch.diff(old, new, cat, config()), config())
+        self.assertNotIn("About OpenRouter:", text)
+
+    def test_quiet_run_is_never_padded_with_the_exclusion_sentence(self):
+        cfg = config(providers=["opencode", "openrouter"])
+        text = watch.render([], cfg)
+        self.assertNotIn("About OpenRouter:", text)
+        self.assertEqual(text.splitlines()[0], "Nothing changed since the last check.")
+
+
 # ------------------------------------------------------------------ delivered alert
+
+class ShippedConfigAlertTests(unittest.TestCase):
+    """AC-34: the quoted alert bodies must be reproducible from the SHIPPED
+    config, not from a watch list extended for the example."""
+
+    def test_alert_one_subject_is_on_the_shipped_watch_list(self):
+        cfg = watch.load_config(os.path.join(ROOT, "config.json"))
+        subject = "kimi-k2.5-free"
+        self.assertIn("opencode/" + subject, cfg["watch"])
+        events = watch.diff(
+            state(free={"opencode": [subject]}),
+            state(free={"opencode": []}),
+            catalog({subject: model(0.4, 2.5)}),
+            cfg,
+        )
+        text = watch.render(events, cfg)
+        self.assertEqual(text.splitlines()[0],
+                         "One model you watch is no longer free: %s." % subject)
+        self.assertIn("You have it on your watch list, so this is likely to affect "
+                      "your setup.", text)
+        self.assertNotIn("not on your watch list", text)
+
+    def test_alert_two_delisting_is_reproducible_from_the_shipped_config(self):
+        cfg = watch.load_config(os.path.join(ROOT, "config.json"))
+        subject = "kimi-k2.5-free"
+        events = watch.diff(
+            state(free={"opencode": [subject]}),
+            state(free={"opencode": []}),
+            catalog({"glm-5.3-flash-free": model()}),
+            cfg,
+        )
+        text = watch.render(events, cfg)
+        self.assertEqual(text.splitlines()[0],
+                         "One model you watch is no longer listed by its provider: %s."
+                         % subject)
+        self.assertIn("Models you watch (1)", text)
+
 
 class DeliveredAlertTests(unittest.TestCase):
     def test_delivered_alert_is_the_rendered_summary(self):
