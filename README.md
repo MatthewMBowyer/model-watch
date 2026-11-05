@@ -29,8 +29,9 @@ it as a trailing "About OpenRouter: ..." paragraph so the owner can see why a
 `$0` row was not reported as free.
 
 The retention signal only exists as prose, so each free-model sentence is
-classified into `zero-retention`, `retained-Nd`, `trains-or-logs`, `logged` or
-`unstated`, and that classification is diffed.
+classified into `zero-retention`, `retained-<N><unit>` (unit one of `d`, `h`, `w`,
+`mo`), `trains-or-logs`, `logged` or `unstated`, and that classification is diffed
+on the privacy sentences as well as on the class.
 
 ## What an alert contains
 

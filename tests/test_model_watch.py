@@ -670,6 +670,52 @@ class RetentionWordingTests(unittest.TestCase):
         for prose, expected in cases.items():
             self.assertEqual(watch.classify(prose), expected, prose)
 
+    def test_retention_windows_in_other_units_are_recognised(self):
+        """AC-25: a window in hours, weeks or months is still a stated window.
+
+        Before this fix those phrasings classified `unstated`, so the alert
+        printed "it still does not say what it does with your data" directly
+        above the quote that says 12 hours.
+        """
+        cases = {
+            "It keeps your prompts for 24 hours.": "retained-24h",
+            "We store your data for 2 weeks.": "retained-2w",
+            "It retains your data for 3 months.": "retained-3mo",
+            "It follows a 2 weeks retention policy.": "retained-2w",
+            "It deletes your data after 90 days.": "retained-90d",
+            "It wipes your data after 72 hours.": "retained-72h",
+            "It purges your prompts after 3 months.": "retained-3mo",
+            "The data is stored for 48 hours.": "retained-48h",
+            "It holds your inputs for 6 months.": "retained-6mo",
+            "It is retained for 90 days.": "retained-90d",
+        }
+        for prose, expected in cases.items():
+            self.assertEqual(watch.classify(prose), expected, prose)
+
+    def test_window_in_hours_is_never_reported_as_unstated(self):
+        """AC-25: never deny the window the quoted text states, in any unit."""
+        events = watch.diff(
+            state(policy={"opencode": policy_map(**{
+                "beam-free": "Beam Free is free. It keeps your prompts for 24 hours."})}),
+            state(policy={"opencode": policy_map(**{
+                "beam-free": "Beam Free is free. It keeps your prompts for 12 hours."})}),
+            catalog({}), config(),
+        )
+        text = watch.render(events, config())
+        self.assertNotIn("does not say what it does with your data", text)
+        self.assertIn("Before, it kept your data for 24 hours.", text)
+        self.assertIn("Now it keeps your data for 12 hours.", text)
+        self.assertIn('The sentence carrying the change: "It keeps your prompts for '
+                      '12 hours."', text)
+
+    def test_month_window_renders_in_months(self):
+        """The class clause speaks the unit the provider used, not days."""
+        self.assertEqual(watch.class_clause("retained-3mo"), "keeps your data for 3 months")
+        self.assertEqual(watch.class_clause("retained-1mo"), "keeps your data for 1 month")
+        self.assertEqual(watch.class_clause("retained-2w", "past"),
+                         "kept your data for 2 weeks")
+        self.assertEqual(watch.severity("retained-2w"), watch.CLASS_SEVERITY["retained"])
+
 
 # ------------------------------------------------------------------ junk keys
 

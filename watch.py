@@ -312,17 +312,26 @@ TRAIN_PATTERNS = (
     r"\bcollect(?:s|ing)?\s+feedback\b",
 )
 
-# Retention windows, in days. Only days are converted; a statement in hours or
-# months is quoted as-is rather than guessed at.
+# Retention windows. Days are the common case, but providers also state hours,
+# weeks and months. Every one of those is a stated window, so none may fall
+# through to `unstated`: that would print "it does not say what it does with
+# your data" directly above the quote that says it.
 _RETAIN_VERB = (r"(?:keeps?|kept|stores?|stored|holds?|held|retains?|retained|"
                 r"are\s+kept|is\s+kept|are\s+stored|is\s+stored|are\s+retained|is\s+retained|"
                 r"logs?|logged|archives?|archived)")
+_RETAIN_UNIT = r"(days?|hours?|weeks?|months?)"
+# Unit -> days, used only to pick the longest window when a statement names two.
+_RETAIN_UNIT_DAYS = {"d": 1.0, "h": 1.0 / 24, "w": 7.0, "mo": 30.0}
 RETAIN_PATTERNS = (
-    re.compile(_RETAIN_VERB + r"[^.;]{0,48}?\bfor\s+(\d+)\s+days?\b"),
-    re.compile(r"\b(\d+)[-\s]days?\s+(?:retention|storage|log)\b"),
-    re.compile(r"\bdeletes?[^.;]{0,48}?\bafter\s+(\d+)\s+days?\b"),
-    re.compile(_RETAIN_VERB + r"[^.;]{0,48}?\bwithin\s+(\d+)\s+days?\b"),
+    re.compile(_RETAIN_VERB + r"[^.;]{0,48}?\bfor\s+(\d+)\s+" + _RETAIN_UNIT + r"\b"),
+    re.compile(r"\b(\d+)[-\s]" + _RETAIN_UNIT + r"\s+(?:retention|storage|log)\b"),
+    re.compile(r"\b(?:deletes?|wipes?|erases?|removes?|purges?|discards?)"
+               r"[^.;]{0,48}?\bafter\s+(\d+)\s+" + _RETAIN_UNIT + r"\b"),
+    re.compile(_RETAIN_VERB + r"[^.;]{0,48}?\bwithin\s+(\d+)\s+" + _RETAIN_UNIT + r"\b"),
 )
+_RETAIN_UNIT_SUFFIX = {"d": "d", "h": "h", "w": "w", "mo": "mo"}
+_RETAIN_UNIT_WORD = {"d": "day", "h": "hour", "w": "week", "mo": "month"}
+_RETAINED_CLASS = re.compile(r"retained-(\d+)(mo|d|h|w)$")
 
 
 def _negated(low, start):
@@ -349,17 +358,35 @@ def _first_unanchored(patterns, low):
     return None
 
 
-def retention_window_days(low):
-    """The stated retention window in days, or None."""
+def _unit_key(raw):
+    raw = (raw or "").strip().lower()
+    for key in ("month", "week", "hour", "day"):
+        if raw.startswith(key):
+            return {"month": "mo", "week": "w", "hour": "h", "day": "d"}[key]
+    return "d"
+
+
+def retention_window(low):
+    """The stated retention window as (count, unit), or None.
+
+    The longest stated window wins, compared on a day-equivalent scale so
+    "2 weeks" outranks "10 days".
+    """
     matches = []
     for pattern in RETAIN_PATTERNS:
         for m in re.finditer(pattern, low):
-            if not _negated(low, m.start()):
-                try:
-                    matches.append(int(m.group(1)))
-                except (TypeError, ValueError):
-                    continue
-    return max(matches) if matches else None
+            if _negated(low, m.start()):
+                continue
+            try:
+                count = int(m.group(1))
+            except (TypeError, ValueError):
+                continue
+            unit = _unit_key(m.group(2) if m.lastindex and m.lastindex >= 2 else "")
+            matches.append((count * _RETAIN_UNIT_DAYS[unit], count, unit))
+    if not matches:
+        return None
+    _, count, unit = max(matches)
+    return count, unit
 
 
 def classify(prose):
@@ -374,9 +401,9 @@ def classify(prose):
         return "trains-or-logs"
     if re.search(r"zero[-\s]retention", low):
         return "zero-retention"
-    days = retention_window_days(low)
-    if days is not None:
-        return "retained-%sd" % days
+    window = retention_window(low)
+    if window is not None:
+        return "retained-%s%s" % (window[0], _RETAIN_UNIT_SUFFIX[window[1]])
     if re.search(r"\blogged\b|\blogs\b|\blogging\b", low):
         return "logged"
     return "unstated"
@@ -388,10 +415,14 @@ def class_clause(cls, tense="present"):
     if cls == "zero-retention":
         return ("kept no copy of your data (zero retention)" if past
                 else "keeps no copy of your data (zero retention)")
-    m = re.match(r"retained-(\d+)d$", cls or "")
+    m = _RETAINED_CLASS.match(cls or "")
     if m:
-        return ("kept your data for %s days" if past
-                else "keeps your data for %s days") % m.group(1)
+        count, unit = m.group(1), m.group(2)
+        word = _RETAIN_UNIT_WORD[unit]
+        if count != "1":
+            word += "s"
+        return ("kept your data for %s %s" if past
+                else "keeps your data for %s %s") % (count, word)
     if cls == "trains-or-logs":
         return ("may have used your data to train or improve the model" if past
                 else "may use your data to train or improve the model")
@@ -404,7 +435,7 @@ def class_clause(cls, tense="present"):
 def severity(cls):
     if cls in CLASS_SEVERITY:
         return CLASS_SEVERITY[cls]
-    if re.match(r"retained-(\d+)d$", cls or ""):
+    if _RETAINED_CLASS.match(cls or ""):
         return CLASS_SEVERITY["retained"]
     return None
 
@@ -445,6 +476,10 @@ def carrier_sentence(text, cls):
     if cls == "zero-retention":
         keys = ("zero-retention", "zero retention")
     elif cls and cls.startswith("retained-"):
+        # Any stated window, in whatever unit the provider wrote it.
+        for sentence in sentences:
+            if retention_window(" ".join(sentence.lower().split())):
+                return sentence
         keys = ("retains", "retained", " days")
     elif cls == "trains-or-logs":
         keys = ("improve the model", "collect feedback", "train")

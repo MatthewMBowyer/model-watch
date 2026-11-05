@@ -16,7 +16,8 @@ Three things, every six hours, for free:
    states, in words, whether a model keeps your prompts. The three answers that
    matter are:
    - *zero retention* - the provider keeps no copy of what you send it. Best.
-   - *retained for N days* - it keeps a copy for a while, for safety reasons.
+   - *retained for N days* (or N hours, weeks or months, as the provider
+     writes it) - it keeps a copy for a while, for safety reasons.
    - *trains on or improves the model* - your prompts may be used to improve it.
    A model moving from the first to either of the others is the single most
    important thing this tool exists to catch.
