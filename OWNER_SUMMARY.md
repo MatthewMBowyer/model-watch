@@ -127,8 +127,11 @@ means a quiet day, not a broken tool.
   such as "OpenCode:" is a label, not an entry. Nor is a heading that merely
   starts with the provider's name, such as "OpenCode Console" or "OpenCode Go".
   Nor is a sentence that talks about the whole catalogue - "All models are
-  free", "Each model is free", "All free models on this page" - because a
-  determiner opens a group, never a name. An entry on the data page is only
+  free", "Each model is free", "Selected models are free", "All free models on
+  this page" - because a sentence about "models" is about all of them at once
+  and never about one. The word that decides is the noun at the end, not the
+  adjective in front of it, so no new describing word can slip a group past
+  that check. An entry on the data page is only
   taken as a model when the model catalogue already lists it, or when its name is
   written the way product names are written (a capital inside a word, as in
   "DeepSeek" or "MiniMax"). The trade is deliberate: you may occasionally read

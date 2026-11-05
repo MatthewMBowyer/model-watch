@@ -1250,7 +1250,10 @@ class JunkKeyTests(unittest.TestCase):
         line = "Mystery Model: During its free period, collected data is retained for 30 days."
         self.assertEqual(watch.extract_policy([line]), {})
         known = watch.policy_identities({"opencode": {"mystery-model": {}}}, {}, ["opencode"])
-        self.assertEqual(set(watch.extract_policy([line], known=known)), {"mystery-model"})
+        observed = watch.observed_identities({"opencode": {"mystery-model": {}}}, ["opencode"])
+        self.assertEqual(
+            set(watch.extract_policy([line], known=known, observed=observed)),
+            {"mystery-model"})
 
     # The residual the round-9 fix left: "any single capitalised common word"
     # was fixed, but a head of SEVERAL plain capitalised words was not, and a
@@ -1515,7 +1518,11 @@ class JunkKeyTests(unittest.TestCase):
              "openrouter-auto-free"),
         ):
             with self.subTest(line=line):
-                self.assertIn(key, watch.extract_policy([line], known={key}))
+                # The corroboration must be a catalogue identity this run READ.
+                # A bare policy key is the extractor's own past output and may
+                # not overturn the provider veto (see the collective-prose tests).
+                self.assertIn(
+                    key, watch.extract_policy([line], known={key}, observed={key}))
                 self.assertEqual(watch.extract_policy([line]), {}, line)
 
 
@@ -1617,6 +1624,75 @@ class JunkKeyTests(unittest.TestCase):
                     with offline({watch.OPENCODE_DOCS[0]: page}):
                         _url2, prose = watch.opencode_policy_text()
                     self.assertEqual(sorted(prose), sorted(clean), line)
+
+    # The residual of MW-EXTRACTOR-SUBJECT-ROUTE-ADMITS-COLLECTIVE-PROSE. Round
+    # 13 vetoed the determiners it had measured, which is a list of the words
+    # that can precede a group noun - so "Selected models", "Listed models" and
+    # "Available models" walked through the same route untouched. The rule is now
+    # on the NOUN: a head whose own noun is the page's word for a model names a
+    # group, whatever the adjective in front of it.
+    CATEGORY_NOUN_HEADS = (
+        "Selected models are free to use on OpenCode for a limited time.",
+        "Listed models are free to use on OpenCode for a limited time.",
+        "Available models are free to use on OpenCode for a limited time.",
+        "Free models are free to use on OpenCode for a limited time.",
+        "Supported models are free to use on OpenCode for a limited time.",
+        "All Models are free to use on OpenCode for a limited time.",
+        "Any model is free to use on OpenCode for a limited time.",
+        "All free models on this page are free to use on OpenCode.",
+    )
+
+    def test_the_category_noun_is_a_group_on_every_route(self):
+        """A head nouned "model(s)" names a group, not a model (AC-13/AC-25)."""
+        for line in self.CATEGORY_NOUN_HEADS:
+            with self.subTest(line=line):
+                self.assertEqual(watch.extract_policy([line]), {}, line)
+                # ...and the head reader must still SEE the noun. Dropping it
+                # left the bare adjective "Selected" in the head, which is a
+                # name-shaped word, so the veto could not tell what it was about.
+                self.assertIn("model", watch.policy_head(line).lower(), line)
+
+    def test_a_stale_baseline_cannot_corroborate_its_own_heading(self):
+        """The veto may not be overturned by the extractor's own past output.
+
+        `known` also carries the previous snapshot's policy keys. If those could
+        overturn the veto, a baseline that once recorded "all-models" would keep
+        that heading alive on every later run, for ever.
+        """
+        for line in self.CATEGORY_NOUN_HEADS + (
+                "All models are free to use on OpenCode for a limited time. "
+                "Data is retained for 30 days.",):
+            with self.subTest(line=line):
+                key = watch.slug(watch.policy_head(line))
+                self.assertEqual(watch.extract_policy([line], known={key}), {}, line)
+
+    def test_a_catalogue_identity_still_overturns_the_category_veto(self):
+        """The other direction: independent upstream evidence still wins.
+
+        A model the catalogue really names with the category word in it is a
+        model, and only an identity this run READ may say so - never the
+        previous snapshot's own policy key.
+        """
+        line = "Mystery Model: During its free period, collected data is retained for 30 days."
+        key = "mystery-model"
+        observed = watch.observed_identities({"opencode": {key: {}}}, ["opencode"])
+        self.assertIn(key, observed)
+        self.assertEqual(
+            set(watch.extract_policy([line], known={key}, observed=observed)), {key})
+        self.assertEqual(watch.extract_policy([line], known={key}), {}, line)
+
+    def test_the_category_veto_passes_the_live_block_through(self):
+        """The live page's real entries all survive the stricter rule."""
+        with offline():
+            _url, clean = watch.opencode_policy_text()
+        self.assertEqual(len(clean), 3)
+        for line in self.CATEGORY_NOUN_HEADS:
+            with self.subTest(line=line):
+                page = DOC_PAGE.replace(
+                    "<li>" + BEAM_PROSE, "<p>%s</p><li>%s" % (line, BEAM_PROSE))
+                with offline({watch.OPENCODE_DOCS[0]: page}):
+                    _url2, prose = watch.opencode_policy_text()
+                self.assertEqual(sorted(prose), sorted(clean), line)
 
     def test_a_plain_worded_new_name_is_still_admitted_on_the_subject_route(self):
         """The other direction: the stricter route still admits a real new name."""

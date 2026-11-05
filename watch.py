@@ -238,6 +238,19 @@ ENTRY_VERBS = r"\b(?:is|are|has|was|were|now)\b"
 # lost (the catalog, the free list and the previous snapshot are that evidence).
 _NAME_CAPITAL = re.compile(r"(?<=[a-z])[A-Z]")
 
+# The page's own noun for a model. Used as a head's noun it names a GROUP
+# ("All models", "Selected models"), never one model, so it is a structural veto
+# in looks_like_model_name() rather than a word that must be enumerated along
+# with every quantifier that can precede it. Deliberately only the category noun
+# the source itself uses: a synonym the page might coin is already refused by the
+# name-shape rule, which accepts no plain lower-case word.
+_MODEL_CATEGORY = frozenset({"model", "models"})
+
+
+def _strip_name(token):
+    """A head token reduced to the word it contributes to a name."""
+    return token.lower().strip(".,;:").rstrip("'\u2019s")
+
 
 def known_identity(phrase, known):
     """True when `phrase` is an identity the run already knows as a model.
@@ -304,7 +317,8 @@ def head_stands_as_subject(line, head):
     return rest.split()[0].strip(".,;:").lower() in _PREDICATE_OPENERS
 
 
-def looks_like_model_name(phrase, labelled=False, known=None, subject=False):
+def looks_like_model_name(phrase, labelled=False, known=None, subject=False,
+                          observed=None):
     """True when `phrase` names a model rather than a piece of section prose.
 
     Shape alone was not enough: any single capitalised common word satisfied
@@ -328,6 +342,14 @@ def looks_like_model_name(phrase, labelled=False, known=None, subject=False):
     "Changelog v1.2:" (MW-EXTRACTOR-LABEL-VERSION-ROUTE, rounds 9-12). A number
     is how a page numbers its headings, so it cannot be what marks a name.
     """
+    # `observed` is the identities this run READ from upstream (the catalogue),
+    # and it is the ONLY evidence that may overturn the two structural vetoes
+    # below. It defaults to empty: `known` also carries the previous snapshot's
+    # policy keys, which are this extractor's own past OUTPUT, so letting them
+    # count would let one bad baseline entry keep its own heading alive on every
+    # later run.
+    if observed is None:
+        observed = frozenset()
     phrase = phrase.strip().strip(".,;:")
     if not phrase or len(phrase) > 60:
         return False
@@ -350,26 +372,52 @@ def looks_like_model_name(phrase, labelled=False, known=None, subject=False):
     # subject.
     if tokens[-1].lower().strip("'\u2019s") in _DATA_SUBJECTS:
         return False
-    # Both routes, one rule: a known identity, or an internal capital. Applied
-    # identically to a colon label and to a name followed by its own clause, so
-    # a heading shape cannot survive on the route the last fix did not touch.
-    # Identity is judged BEFORE the provider veto because it is the only
-    # evidence that a phrase the shape rules dislike is nevertheless a model.
+    # TWO STRUCTURAL VETOES, judged before any accept route. Neither may be
+    # overridden by corroboration: the evidence a page supplies for a heading is
+    # also what a stale baseline supplies, so an identity the run already holds
+    # can confirm a class noun it should never have recorded.
+    #
+    # (1) The page's own noun for a model, used as the head's noun, names a
+    # GROUP of models and never one of them: "All models", "Some models",
+    # "Selected models", "All free models on this page". The category is what
+    # the page is about, so every quantifier or adjective in front of it is the
+    # same shape - which is why the veto is on the noun, not on the words that
+    # can precede it. This closes the whole class on every route at once instead
+    # of one quantifier per round (MW-EXTRACTOR-ADMITS-COLLECTIVE-PROSE, then
+    # "Selected Models" / "Listed Models", AC-13/AC-25). No real model is named
+    # after the category: measured across the 138 identities this run holds
+    # (catalog, free list, previous snapshot), none contains it.
+    if any(_strip_name(t) in _MODEL_CATEGORY for t in tokens):
+        # Overridden only by an identity this run READ from upstream. The set
+        # `known` also carries the previous snapshot's own policy keys, and
+        # those are the extractor's past OUTPUT - a baseline that once recorded
+        # "all-models" would otherwise corroborate the heading on every later
+        # run, forever. A catalogue entry is independent evidence that the page
+        # really does name a model this way ("Mystery Model", "Beam Free
+        # Pricing"), so it is the only thing allowed to win here.
+        return bool(known_identity(phrase, observed))
+    # (2) A provider's own name is never one of its models. "OpenCode: Prompts
+    # are retained for 30 days." is a section label, and it satisfied the
+    # internal capital that accepts a new name, so it keyed as a model called
+    # OpenCode and would fire a retention alert naming something the page never
+    # states (AC-13/AC-25). The same name also opens page SECTIONS - "OpenCode
+    # Console provides a list of models ...", "OpenCode Go provides a
+    # subscription ..." - and every one of those carries the provider's own
+    # internal capital, so the veto covers a head that OPENS with a provider,
+    # not only a head that IS one. The identities come from PROVIDER_LABEL -
+    # this run's own providers - so no heading word is written down here. Judged
+    # before identity for the same reason as (1): a baseline that recorded
+    # "opencode-console" would otherwise corroborate the heading forever.
+    # Measured across the same 138 identities, no real model opens with its
+    # provider's name.
+    if slug(tokens[0]) in _PROVIDER_IDENTITIES:
+        return bool(known_identity(phrase, observed))
+    # Both remaining routes, one rule: a known identity, or an internal capital.
+    # Applied identically to a colon label and to a name followed by its own
+    # clause, so a heading shape cannot survive on the route the last fix did
+    # not touch.
     if known_identity(phrase, known):
         return True
-    # A provider's own name is never one of its models. "OpenCode: Prompts are
-    # retained for 30 days." is a section label, and it satisfied the internal
-    # capital that accepts a new name, so it keyed as a model called OpenCode
-    # and would fire a retention alert naming something the page never states
-    # (AC-13/AC-25). The same name also opens page SECTIONS - "OpenCode Console
-    # provides a list of models ...", "OpenCode Go provides a subscription ..."
-    # - and every one of those carries the provider's own internal capital, so
-    # the veto has to cover a head that OPENS with a provider, not only a head
-    # that IS one. The identities come from PROVIDER_LABEL - this run's own
-    # providers - so no heading word is written down here, and a real model that
-    # opens with the provider word is still kept once the run knows it.
-    if slug(tokens[0]) in _PROVIDER_IDENTITIES:
-        return False
     if any(_NAME_CAPITAL.search(t) for t in tokens):
         return True
     # The head ran on into the sentence's real subject ("Retention Policy
@@ -466,6 +514,12 @@ def policy_head(line):
         if not run and word in _DATA_SUBJECTS:
             return ""
         if not _name_token(token):
+            # The category noun ends the head but still BELONGS to it: dropping
+            # it would hide "Selected models" behind the bare word "Selected",
+            # which is a name-shaped token, so the structural veto in
+            # looks_like_model_name() could not see what the head is about.
+            if run and word in _MODEL_CATEGORY:
+                run.append(token)
             break
         run.append(token)
     if run:
@@ -490,19 +544,19 @@ def head_is_labelled(line):
     return bool(re.match(r"^[^:]{1,60}:\s", first))
 
 
-def is_policy_entry(line, known=None):
+def is_policy_entry(line, known=None, observed=None):
     line = " ".join(line.split())
     if len(line) < 20:
         return False
     head = policy_head(line)
     if not looks_like_model_name(
             head, labelled=head_is_labelled(line), known=known,
-            subject=head_stands_as_subject(line, head)):
+            subject=head_stands_as_subject(line, head), observed=observed):
         return False
     return asserts_about_model(line)
 
 
-def extract_policy(lines, known=None):
+def extract_policy(lines, known=None, observed=None):
     """slug -> prose, for every line that is a real model statement.
 
     A statement can wrap: a page that puts the model name on one line and its
@@ -522,17 +576,19 @@ def extract_policy(lines, known=None):
         text = line
         head = policy_head(text)
         if not asserts_about_model(text) and looks_like_model_name(
-                head, known=known, subject=head_stands_as_subject(text, head)):
+                head, known=known, subject=head_stands_as_subject(text, head),
+                observed=observed):
             nxt = next((l for l in lines[i + 1:] if l), "")
             # The continuation must open with the claim itself. A heading whose
             # next line is more noun phrase ("Retention Policy" / "Prompts are
             # retained for 30 days.") would otherwise be glued into a head that
             # reads as a name the source never states (AC-25).
             if nxt and opens_with_predicate(nxt) \
-                    and not looks_like_model_name(policy_head(nxt), known=known) \
+                    and not looks_like_model_name(
+                        policy_head(nxt), known=known, observed=observed) \
                     and asserts_about_model(nxt):
                 text = "%s %s" % (text, nxt)
-        if not is_policy_entry(text, known=known):
+        if not is_policy_entry(text, known=known, observed=observed):
             continue
         key = slug(policy_head(text))
         if key:
@@ -540,7 +596,7 @@ def extract_policy(lines, known=None):
     return policies
 
 
-def opencode_policy_text(known=None):
+def opencode_policy_text(known=None, observed=None):
     """Find the page and the prose block that actually states model retention."""
     for url in OPENCODE_DOCS:
         try:
@@ -561,7 +617,7 @@ def opencode_policy_text(known=None):
                 if line in stop_words:
                     break
                 body.append(line)
-            found = extract_policy(body, known=known)
+            found = extract_policy(body, known=known, observed=observed)
             if len(found) > len(best):
                 best = found
         if best:
@@ -932,6 +988,23 @@ def policy_block_digest(policies):
 
 # ---------------------------------------------------------------- collection
 
+def observed_identities(cat, providers):
+    """The identities this run READ from upstream: the catalogue.
+
+    Kept separate from the previous snapshot because those keys are this
+    extractor's own past OUTPUT. They may corroborate a plain-worded name (a
+    model already tracked keeps tracking), but they may not overturn a
+    structural veto - otherwise one bad baseline entry would keep its own
+    heading alive forever.
+    """
+    observed = set()
+    for pid in providers:
+        for mid in (cat.get(pid) or {}):
+            observed.add(normalise(mid))
+            observed.add(slug(mid))
+    return observed
+
+
 def policy_identities(cat, previous, providers):
     """Every model identity this run already knows, as keys.
 
@@ -940,11 +1013,7 @@ def policy_identities(cat, previous, providers):
     free and policy keys - so no model name is ever written into the code and a
     plain-worded model the source states is not rejected.
     """
-    known = set()
-    for pid in providers:
-        for mid in (cat.get(pid) or {}):
-            known.add(normalise(mid))
-            known.add(slug(mid))
+    known = observed_identities(cat, providers)
     for section in ("free", "policy"):
         for pid, entries in ((previous or {}).get(section) or {}).items():
             if isinstance(entries, dict):
@@ -988,7 +1057,9 @@ def collect(config, previous=None):
         snap["policy"][pid] = {}
 
     if "opencode" in providers:
-        doc_url, prose = opencode_policy_text(known=policy_identities(cat, previous, providers))
+        doc_url, prose = opencode_policy_text(
+            known=policy_identities(cat, previous, providers),
+            observed=observed_identities(cat, providers))
         if prose:
             meta["policy_ok"] = True
             snap["policy"]["opencode"] = {
