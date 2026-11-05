@@ -1252,6 +1252,92 @@ class JunkKeyTests(unittest.TestCase):
         known = watch.policy_identities({"opencode": {"mystery-model": {}}}, {}, ["opencode"])
         self.assertEqual(set(watch.extract_policy([line], known=known)), {"mystery-model"})
 
+    # The residual the round-9 fix left: "any single capitalised common word"
+    # was fixed, but a head of SEVERAL plain capitalised words was not, and a
+    # heading set in bold in the same paragraph as its prose renders exactly
+    # that way ("Retention Free tier users' data is retained ...").
+    INLINE_HEADINGS = (
+        "Retention Free tier users' data is retained for 30 days.",
+        "Pricing Free tier requests are retained for 30 days.",
+        "Retention Free-tier requests are retained for 30 days.",
+        "Limits Free models are retained for 30 days.",
+        "Storage Free users' prompts are kept for 30 days.",
+        "Notes Users' data is retained for 30 days.",
+        "Privacy Policy Your data is retained for 30 days.",
+        "Usage Policy All requests are retained for 30 days.",
+        "Terms of Service Data is retained for 30 days.",
+        "Retention Policy Prompts are retained for 30 days.",
+        "Data Retention Prompts are kept for 30 days.",
+    )
+
+    def test_inline_heading_never_becomes_a_policy_key(self):
+        """A heading inlined with its prose is not a model name either."""
+        known = {"beam-free", "glm-5-3-flash-free"}
+        for line in self.INLINE_HEADINGS:
+            with self.subTest(line=line):
+                self.assertEqual(watch.extract_policy([line], known=known), {}, line)
+
+    def test_a_heading_is_not_joined_onto_the_sentence_it_introduces(self):
+        """The join route must not rebuild the same wrong key.
+
+        A heading on one line and its prose on the next is the same furniture
+        in a different shape, so the continuation has to open with the claim
+        itself. A real model that wraps is still joined (asserted above).
+        """
+        known = {"beam-free", "glm-5-3-flash-free"}
+        pairs = (
+            ("Retention Policy", "Prompts are retained for 30 days."),
+            ("Data Retention", "Prompts are kept for 30 days."),
+            ("Pricing", "Free tier requests are retained for 30 days."),
+        )
+        for pair in pairs:
+            with self.subTest(pair=pair):
+                self.assertEqual(watch.extract_policy(list(pair), known=known), {}, pair)
+
+    def test_a_real_model_wrapping_onto_a_predicate_is_still_joined(self):
+        """The other direction: the join rule did not close the real entry."""
+        got = watch.extract_policy([
+            "MiMo-V2.6-Flash Free", "is available on OpenCode for a limited time.",
+        ])
+        self.assertEqual(set(got), {"mimo-v2-6-flash-free"})
+
+    def test_inline_heading_alerts_nothing_against_a_seeded_baseline(self):
+        """AC-25: no alert may name "Retention Free" as a model."""
+        before = state(free={"opencode": ["glm-5-3-flash-free"]},
+                       policy={"opencode": policy_map(**{"glm-5-3-flash-free": GLM_PROSE})})
+        for line in self.INLINE_HEADINGS:
+            with self.subTest(line=line):
+                keys = watch.extract_policy([GLM_PROSE, line])
+                self.assertEqual(list(keys), ["glm-5-3-flash-free"], line)
+                events = watch.diff(
+                    before,
+                    state(free={"opencode": ["glm-5-3-flash-free"]},
+                          policy={"opencode": policy_map(**keys)}),
+                    catalog({"glm-5.3-flash-free": model()}), config(),
+                )
+                self.assertEqual(events, [], line)
+
+    def test_inline_heading_in_the_live_page_adds_no_key(self):
+        """The same insertions through the real opencode_policy_text()."""
+        with offline():
+            _url, clean = watch.opencode_policy_text()
+            self.assertTrue(clean)
+            for line in self.INLINE_HEADINGS:
+                with self.subTest(line=line):
+                    page = DOC_PAGE.replace(
+                        "<li>" + BEAM_PROSE, "<li>%s</li><li>%s" % (line, BEAM_PROSE))
+                    with offline({watch.OPENCODE_DOCS[0]: page}):
+                        _url2, prose = watch.opencode_policy_text()
+                    self.assertEqual(sorted(prose), sorted(clean), line)
+
+    def test_a_known_model_whose_name_carries_a_data_word_is_still_kept(self):
+        """The data-subject veto cannot swallow a real, already-known model."""
+        line = ("Beam Free Pricing is free on OpenCode for a limited time. "
+                "Its provider retains your data for 30 days.")
+        known = {"beam-free-pricing"}
+        self.assertEqual(set(watch.extract_policy([line], known=known)), {"beam-free-pricing"})
+
+
 
 # ------------------------------------------------------------------ identity
 

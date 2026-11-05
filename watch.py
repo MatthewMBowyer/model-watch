@@ -215,10 +215,12 @@ NON_NAME_WORDS = frozenset(
 
 ENTRY_VERBS = r"\b(?:is|are|has|was|were|now)\b"
 
-# A token that is distinctive by shape: a version marker, a hyphen or an
-# internal capital. A lone capitalised common word ("Update", "Warning",
-# "Retention") carries none of them, which is what keeps section prose out.
-_NAME_DISTINCTIVE = re.compile(r"[0-9]|[.\-]|(?<=[a-z])[A-Z]")
+# A token that is distinctive by shape: a version marker, a dotted version or
+# an internal capital. Ordinary words carry none of them, which is what keeps
+# section prose ("Update", "Retention", "Retention Free") out of the key space.
+# A hyphen alone is NOT distinctive: "Retention Free-tier" is a section label,
+# and every real name on the page that needs a hyphen also carries a digit.
+_NAME_DISTINCTIVE = re.compile(r"[0-9]|[.]|(?<=[a-z])[A-Z]")
 
 
 def known_identity(phrase, known):
@@ -228,7 +230,51 @@ def known_identity(phrase, known):
     return slug(phrase) in known or normalise(phrase) in known
 
 
-def looks_like_model_name(phrase, labelled=False, known=None):
+# The grammatical boundary between a SUBJECT and the claim made about it. A
+# model name is followed by one of these; a section label is followed by more
+# noun phrase ("Retention Free tier users' data is retained ..."). This is a
+# closed class of function words, not a list of names or topics, so it neither
+# admits nor rejects a model by vocabulary.
+_PREDICATE_OPENERS = frozenset(
+    """
+    is are was were has have had do does did can could may might will would
+    shall should must costs cost comes come remains remain offers offer
+    follows follow uses use provides provide supports support includes include
+    retains retain keeps keep stores store logs log shares share sends send
+    transfers transfer sells sell discloses disclose free
+    """.split())
+
+
+def opens_with_predicate(text):
+    """True when `text` begins with the claim rather than more noun phrase."""
+    tokens = " ".join(str(text or "").split()).split()
+    return bool(tokens) and tokens[0].strip(".,;:").lower() in _PREDICATE_OPENERS
+
+
+def head_stands_as_subject(line, head):
+    """True when `head` is the subject of a clause, not a cut-short noun phrase.
+
+    Shape alone cannot separate "Foo Free" from "Retention Free": both are two
+    ordinary capitalised words, and a heading set in bold in the same paragraph
+    as its prose renders as "Retention Free tier users' data is retained ...".
+    What separates them is what follows. A name is followed by the end of its
+    own sentence or by the claim made about it; a section label is followed by
+    more noun phrase, so the head the tokeniser chose is only the front of the
+    real subject.
+    """
+    text = " ".join(str(line or "").split())
+    first = re.split(r"(?<=[.!?])\s+", text, maxsplit=1)[0]
+    if not first.startswith(head):
+        return False
+    rest = first[len(head):].strip()
+    if not rest:
+        return True
+    if rest[0] in ".!?;":
+        return True
+    return rest.split()[0].strip(".,;:").lower() in _PREDICATE_OPENERS
+
+
+def looks_like_model_name(phrase, labelled=False, known=None, subject=False):
     """True when `phrase` names a model rather than a piece of section prose.
 
     Shape alone was not enough: any single capitalised common word satisfied
@@ -236,12 +282,15 @@ def looks_like_model_name(phrase, labelled=False, known=None):
     the model "update" and fired a retention alert naming a model the source
     never states (MW-EXTRACTOR-ADMITS-SECTION-PROSE, AC-13/AC-25).
 
-    Two shapes cannot be a model name and need no vocabulary:
-    a lone word with no version marker, hyphen or internal capital, and a
-    colon label of ordinary words. Both are still accepted when the run already
-    knows the phrase as a model identity (the catalog, the free list or the
-    previous snapshot), so a real model whose name is plain words is not lost
-    to this rule.
+    The rule is structural in both directions and needs no vocabulary: a head
+    is a model only when some token in it is distinctive by shape (a digit, a
+    dotted version, an internal capital) or the run already knows the phrase as
+    a model identity (the catalog, the free list or the previous snapshot).
+    Shape alone could not separate "Pulse Alpha Free" from "Retention Free"
+    - both are plain capitalised words - so the corroboration half is what
+    decides, and it comes from data the run already holds rather than from a
+    list of words to reject. Continuity is safe because the previous snapshot
+    is part of that data, so a model already tracked never stops being known.
     """
     phrase = phrase.strip().strip(".,;:")
     if not phrase or len(phrase) > 60:
@@ -255,13 +304,24 @@ def looks_like_model_name(phrase, labelled=False, known=None):
         return False
     if tokens[0].lower() in NON_NAME_WORDS:
         return False
-    distinctive = any(_NAME_DISTINCTIVE.search(t) for t in tokens)
-    if len(tokens) == 1:
-        return distinctive or known_identity(phrase, known)
-    if labelled:
-        return distinctive or known_identity(phrase, known)
-    # A model name carries a capital, a digit or a dotted version.
-    return any(re.search(r"[A-Z0-9.]", t) for t in tokens)
+    if any(_NAME_DISTINCTIVE.search(t) for t in tokens):
+        return True
+    if known_identity(phrase, known):
+        return True
+    # The head ran on into the sentence's real subject ("Retention Policy
+    # Prompts are retained ..."), so the subject is the reader's data and the
+    # line states a posture, not a model. Checked after the shape and identity
+    # tests so a real model whose name happens to carry one of these words is
+    # still kept.
+    if any(t.lower().strip("'\u2019s") in _DATA_SUBJECTS for t in tokens):
+        return False
+    # A plain-worded head is a model only when the line makes it the subject of
+    # its own clause. A colon label is never corroborated that way: a section
+    # label and a real entry share the colon shape, so a label must be
+    # distinctive or already known.
+    if labelled or len(tokens) == 1:
+        return False
+    return bool(subject)
 
 
 def _name_token(token):
@@ -356,7 +416,9 @@ def is_policy_entry(line, known=None):
     if len(line) < 20:
         return False
     head = policy_head(line)
-    if not looks_like_model_name(head, labelled=head_is_labelled(line), known=known):
+    if not looks_like_model_name(
+            head, labelled=head_is_labelled(line), known=known,
+            subject=head_stands_as_subject(line, head)):
         return False
     return asserts_about_model(line)
 
@@ -379,10 +441,16 @@ def extract_policy(lines, known=None):
         if not line:
             continue
         text = line
+        head = policy_head(text)
         if not asserts_about_model(text) and looks_like_model_name(
-                policy_head(text), known=known):
+                head, known=known, subject=head_stands_as_subject(text, head)):
             nxt = next((l for l in lines[i + 1:] if l), "")
-            if nxt and not looks_like_model_name(policy_head(nxt), known=known) \
+            # The continuation must open with the claim itself. A heading whose
+            # next line is more noun phrase ("Retention Policy" / "Prompts are
+            # retained for 30 days.") would otherwise be glued into a head that
+            # reads as a name the source never states (AC-25).
+            if nxt and opens_with_predicate(nxt) \
+                    and not looks_like_model_name(policy_head(nxt), known=known) \
                     and asserts_about_model(nxt):
                 text = "%s %s" % (text, nxt)
         if not is_policy_entry(text, known=known):
