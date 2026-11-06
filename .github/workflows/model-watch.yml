@@ -31,6 +31,9 @@ jobs:
           python-version: "3.12"
 
       # watch.py is stdlib-only, so there is nothing to install
+      - name: Run the fixture suite
+        run: python tests/test_model_watch.py
+
       - name: Check catalogs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -47,6 +50,7 @@ jobs:
           fi
           git config user.name "model-watch"
           git config user.email "model-watch@users.noreply.github.com"
-          git commit -am "chore: update model-watch baseline"
+          # state.json only: an unrelated dirty file must never ride along
+          git commit -m "Record this run's catalog snapshot as the next baseline" state.json
           # scheduled runs check out a detached HEAD
           git push origin HEAD:${GITHUB_REF_NAME}

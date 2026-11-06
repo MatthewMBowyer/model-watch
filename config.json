@@ -1,7 +1,6 @@
 {
  "providers": [
-  "opencode",
-  "openrouter"
+  "opencode"
  ],
  "mention": "MatthewMBowyer",
  "watch": [
