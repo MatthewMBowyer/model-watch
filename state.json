@@ -1,6 +1,6 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "cddca770e5960a37"
+  "https://opencode.ai/v2/docs/console/models/": "b7e3cb58b93c744a"
  },
  "free": {
   "opencode": [
@@ -19,6 +19,8 @@
    "grok-code",
    "hy3-free",
    "hy3-preview-free",
+   "iceman-free",
+   "inkling-2-small-free",
    "kimi-k2.5-free",
    "laguna-s-2.1-free",
    "ling-2.6-flash-free",
@@ -80,6 +82,14 @@
     "class": "zero-retention",
     "text": "GLM-5.3-Flash Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
    },
+   "iceman-free": {
+    "class": "trains-or-logs",
+    "text": "Iceman Free is a stealth model that\u2019s free on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
+   },
+   "inkling-2-small-free": {
+    "class": "trains-or-logs",
+    "text": "Inkling 2 Small Free is free on OpenCode for a limited time. Its provider retains your data and may use it for model training; see"
+   },
    "jev-1-13-free": {
     "class": "unstated",
     "text": "Jev 1.13 Free is available on OpenCode for a limited time."
@@ -99,10 +109,6 @@
    "nemotron-3-ultra-free": {
     "class": "trains-or-logs",
     "text": "Nemotron 3 Ultra Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
-   },
-   "pulse-alpha-free": {
-    "class": "trains-or-logs",
-    "text": "Pulse Alpha Free is a stealth model that\u2019s free on OpenCode for a limited time. The team is using this time to collect feedback and improve the model. It\u2019s not available in the European Union, Iceland, Liechtenstein, Norway, Cuba, Iran, North Korea, Russia, Ukraine, or Venezuela."
    }
   }
  }
