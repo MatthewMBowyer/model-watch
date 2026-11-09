@@ -1,6 +1,6 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "b7e3cb58b93c744a"
+  "https://opencode.ai/v2/docs/console/models/": "c2a181ba65bbf3fc"
  },
  "free": {
   "opencode": [
@@ -30,6 +30,7 @@
    "ling-3.1-flash-free",
    "ll-alpha-free",
    "longcat-2.0-free",
+   "longcat-2.5-free",
    "longcat-2.5-preview-free",
    "mimo-v2-flash-free",
    "mimo-v2-omni-free",
@@ -93,6 +94,10 @@
    "jev-1-13-free": {
     "class": "unstated",
     "text": "Jev 1.13 Free is available on OpenCode for a limited time."
+   },
+   "longcat-2-5-free": {
+    "class": "zero-retention",
+    "text": "LongCat 2.5 Free is free on OpenCode for a limited time, with a limit of 100 requests per day. Its provider follows a zero-retention policy and does not use your data for model training. It\u2019s hosted in China."
    },
    "mimo-v2-6-flash-free": {
     "class": "trains-or-logs",
