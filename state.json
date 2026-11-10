@@ -1,6 +1,6 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "c2a181ba65bbf3fc"
+  "https://opencode.ai/v2/docs/console/models/": "7bcffad2bc63f6c3"
  },
  "free": {
   "opencode": [
@@ -67,10 +67,6 @@
     "class": "trains-or-logs",
     "text": "Big Pickle is a stealth model that\u2019s free on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
    },
-   "crouton-alpha-free": {
-    "class": "trains-or-logs",
-    "text": "Crouton Alpha Free is a stealth model that\u2019s free on OpenCode for a limited time. The team is using this time to collect feedback and improve the model. It\u2019s not available in the European Union, Afghanistan, Belarus, China (including Hong Kong and Macau), Cambodia, Cuba, Eritrea, Ethiopia, Haiti, Iran, Iraq, Libya, Myanmar, Nicaragua, North Korea, Pakistan, Russia, Somalia, Syria, Venezuela, or Western Sahara, or in some regions within otherwise supported countries."
-   },
    "deepseek-v4-1-flash-free": {
     "class": "zero-retention",
     "text": "DeepSeek V4.1 Flash Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
@@ -102,6 +98,10 @@
    "mimo-v2-6-flash-free": {
     "class": "trains-or-logs",
     "text": "MiMo-V2.6-Flash Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
+   },
+   "minimax-m3-1-flash-free": {
+    "class": "zero-retention",
+    "text": "MiniMax M3.1 Flash Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
    },
    "nemotron-3-5-lightning-free": {
     "class": "trains-or-logs",
