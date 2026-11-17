@@ -1,6 +1,6 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "7bcffad2bc63f6c3"
+  "https://opencode.ai/v2/docs/console/models/": "02a96b9c52bef5c0"
  },
  "free": {
   "opencode": [
@@ -98,11 +98,7 @@
    },
    "mimo-v2-6-flash-free": {
     "class": "trains-or-logs",
-    "text": "MiMo-V2.6-Flash Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
-   },
-   "minimax-m3-1-flash-free": {
-    "class": "zero-retention",
-    "text": "MiniMax M3.1 Flash Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
+    "text": "MiMo-V2.6-Flash Free is available on OpenCode for a limited time. The team is using this time to collect feedback."
    },
    "nemotron-3-5-lightning-free": {
     "class": "trains-or-logs",
