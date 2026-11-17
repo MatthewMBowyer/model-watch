@@ -1,6 +1,6 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "02a96b9c52bef5c0"
+  "https://opencode.ai/v2/docs/console/models/": "5b6bd0fa8ed6a0f4"
  },
  "free": {
   "opencode": [
@@ -107,10 +107,6 @@
    "nemotron-3-5-super-vl-free": {
     "class": "trains-or-logs",
     "text": "Nemotron 3.5 Super VL Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
-   },
-   "nemotron-3-ultra-free": {
-    "class": "trains-or-logs",
-    "text": "Nemotron 3 Ultra Free is available on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
    }
   }
  }
