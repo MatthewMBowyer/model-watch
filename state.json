@@ -1,6 +1,6 @@
 {
  "docs": {
-  "https://opencode.ai/v2/docs/console/models/": "5b6bd0fa8ed6a0f4"
+  "https://opencode.ai/v2/docs/console/models/": "207a0916ec455bb6"
  },
  "free": {
   "opencode": [
@@ -75,10 +75,6 @@
    "flint-40b-free": {
     "class": "trains-or-logs",
     "text": "Flint 40B Free is free on OpenCode for a limited time. The team is using this time to collect feedback and improve the model."
-   },
-   "glm-5-3-flash-free": {
-    "class": "zero-retention",
-    "text": "GLM-5.3-Flash Free is free on OpenCode for a limited time. Its provider follows a zero-retention policy and does not use your data for model training."
    },
    "iceman-free": {
     "class": "trains-or-logs",
